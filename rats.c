@@ -1,3 +1,4 @@
+// vim: set et ts=3 sts=3 sw=3 :
 /**
  * An open-source implementation of the `rats` tool for the ODS/5
  * filesystem driver, intended to replicate the functionality in the
@@ -96,7 +97,7 @@ int main(int argc, char** argv)
          for(ssize_t len = 0; len < sizeof(fat); ++len, ++part) {
             printf("%02x", *part);
          }
-         printf("\n");
+         putchar('\n');
       }
 
       // print fields, if requested
@@ -116,6 +117,148 @@ int main(int argc, char** argv)
          printf("recattr_flags: 0x%02x\n",         fat.recattr_flags);
          printf("gbc32: 0x%08x\n",                 fat.gbc32);
          printf("versions: 0x%04x\n",              fat.versions);
+      }
+
+      // Print out friendly attributes, but only if printing all or no other options given
+      if (doPrintAll == true || (doPrintRaw == false && doPrintFields == false)) {
+         char stbuf[9];
+         char* val_tmp;
+
+         // File organization
+         switch (fat.rtype.fileorg) {
+            case FILE_ORG_SEQ:
+               val_tmp = "seq";
+               break;
+            case FILE_ORG_REL:
+               val_tmp = "rel";
+               break;
+            case FILE_ORG_IDX:
+               val_tmp = "idx";
+               break;
+            case FILE_ORG_DIR:
+               val_tmp = "dir";
+               break;
+            case FILE_ORG_SPECIAL:
+               val_tmp = "special";
+               break;
+            default:
+               snprintf(stbuf, 9, "0x%02x", fat.rtype.fileorg);
+               val_tmp = stbuf;
+         }
+         printf("org=%s", val_tmp);
+
+         // Record type
+         switch (fat.rtype.rtype) {
+            case RECORD_FORMAT_UDF:
+               val_tmp = "udf";
+               break;
+            case RECORD_FORMAT_FIX:
+               val_tmp = "fix";
+               break;
+            case RECORD_FORMAT_VAR:
+               val_tmp = "var";
+               break;
+            case RECORD_FORMAT_VFC:
+               val_tmp = "vfc";
+               break;
+            case RECORD_FORMAT_STM:
+               val_tmp = "stm";
+               break;
+            case RECORD_FORMAT_STMLF:
+               val_tmp = "stmlf";
+               break;
+            case RECORD_FORMAT_STMCR:
+               val_tmp = "stmcr";
+               break;
+            default:
+               snprintf(stbuf, 9, "0x%02x", fat.rtype.rtype);
+               val_tmp = stbuf;
+               break;
+         }
+         printf(" rfm=%s", val_tmp);
+
+         // Handle special files, which use fat.rattrib to indicate type
+         // or, print record attributes
+         if (fat.rtype.fileorg == FILE_ORG_SPECIAL) {
+            vms_byte const special_type = *((vms_byte*) &fat.rattrib);
+
+            switch (special_type) {
+               case SPECIAL_TYPE_NONE:
+                  val_tmp = "none";
+                  break;
+               case SPECIAL_TYPE_FIFO:
+                  val_tmp = "fifo";
+                  break;
+               case SPECIAL_TYPE_CHAR:
+                  val_tmp = "char_special";
+                  break;
+               case SPECIAL_TYPE_BLOCK:
+                  val_tmp = "block_special";
+                  break;
+               case SPECIAL_TYPE_SYMLINK:
+                  val_tmp = "symlink";
+                  break;
+               case SPECIAL_TYPE_SYMBOLIC_LINK:
+                  val_tmp = "symbolic_link";
+                  break;
+               default:
+                  snprintf(stbuf, 9, "0x%02x", special_type);
+                  val_tmp = stbuf;
+                  break;
+            }
+
+            printf(" specail_type=%s", val_tmp);
+         } else {
+            struct ods_fat_rattrib rat = fat.rattrib;
+            vms_byte b_rat = *((vms_byte*) &rat);
+
+            // if unused bits are set, this is probably not rattribs proper
+            // XXX side note, a lot of this relies on the compiler aligning structures consistently
+            // XXX maybe some manual aligning should be done.
+            // XXX e.g. only five bits are defined in `struct ods_fat_rattrib` but it is expected to be
+            // XXX eight bits. this will normally be true.
+            if (rat.fill_0 != 0) {
+               printf(" rat=0x%02x", b_rat);
+            } else if (b_rat == 0) {
+               printf(" rat=none");
+            } else {
+               if (rat.fortran_cc != 0) printf(" rat=ftn");
+               if (rat.implied_cc != 0) printf(" rat=cr");
+               if (rat.print_cc   != 0) printf(" rat=prn");
+               if (rat.nospan     != 0) printf(" rat=blk");
+               if (rat.msbrcw     != 0) printf(" rat=msb");
+            }
+         }
+
+         // Print 'lrl' (rsize)
+         printf(" lrl=%u", fat.rsize);
+
+         // Print bucket and VFC size if not printing all items
+         // otherwise, print the rest of the FAT information
+         if (doPrintAll == false) {
+            if (fat.rtype.fileorg == FILE_ORG_REL) {
+               printf(" bks=%u", fat.bktsize);
+            }
+
+            if (fat.rtype.rtype == RECORD_FORMAT_VFC) {
+               printf(" fsz=%u", fat.vfcsize);
+            }
+         } else {
+            vms_long const hbk = (fat.hiblk.high * 0x10000) + fat.hiblk.low;
+            vms_long const ebk = (fat.efblk.high * 0x10000) + fat.efblk.low;
+            printf(" hbk=%u", hbk);
+            printf(" ebk=%u", ebk);
+            printf(" ffb=%u", fat.ffbyte);
+            printf(" bks=%u", fat.bktsize);
+            printf(" fsz=%u", fat.vfcsize);
+            printf(" mrs=%u", fat.maxrec);
+            printf(" deq=%u", fat.defext);
+            printf(" gbc=%u", fat.gbc);
+            printf(" gbx=%u", fat.gbc32);
+            printf(" vrs=%u", fat.versions);
+         }
+
+         putchar('\n');
       }
    }
 }

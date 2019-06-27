@@ -14,8 +14,10 @@
 
 CC = gcc
 
+%.c: %.h
+
 %.o: %.c
 	$(CC) -c $^ -o $@
 
-rats: ods_xattr.o rats.o
+rats: ods_xattr.o rats.o ods_type.h
 	$(CC) $^ -o $@

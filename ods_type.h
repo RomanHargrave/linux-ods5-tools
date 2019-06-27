@@ -23,10 +23,10 @@
 #if !defined(_ODS_TYPE_H)
 #define _ODS_TYPE_H
 
-typedef uint8_t   vms_byte;
-typedef uint16_t  vms_word;
-typedef uint32_t  vms_long;
-typedef uint64_t  vms_quad;
+typedef unsigned char      vms_byte;
+typedef unsigned short     vms_word;
+typedef unsigned int       vms_long;
+typedef unsigned long long vms_quad;
 
 enum ods_file_org {
    FILE_ORG_SEQ      = 0,
@@ -55,17 +55,20 @@ enum ods_special_type {
    SPECIAL_TYPE_SYMBOLIC_LINK = 5
 };
 
+// Record type byte
 struct ods_fat_rtype {
    vms_byte rtype     : 4; // Record type
    vms_byte fileorg   : 4; // File organization
 };
 
+// Record attribute byte
 struct ods_fat_rattrib {
    vms_byte fortran_cc : 1; // FORTRAN carriage control
    vms_byte implied_cc : 1; // implied carriage control
    vms_byte print_cc   : 1; // print file carriage control
    vms_byte nospan     : 1; // No spanned records
    vms_byte msbrcw     : 1; // Format of RCW (0=LSB, 1=MSB)
+   vms_byte fill_0     : 3; // (manual alignment)
 };
 
 struct ods_fat_block {
