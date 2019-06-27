@@ -206,8 +206,7 @@ int main(int argc, char** argv)
                   val_tmp = stbuf;
                   break;
             }
-
-            printf(" specail_type=%s", val_tmp);
+            printf(" special_type=%s", val_tmp);
          } else {
             struct ods_fat_rattrib rat = fat.rattrib;
             vms_byte b_rat = *((vms_byte*) &rat);
