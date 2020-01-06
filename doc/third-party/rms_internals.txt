@@ -1,17 +1,7 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>VMS/RMS INTERNAL DATA STRUCTURES</title>
-</head>
-
-<BODY BGCOLOR="#F8F8D1">
-<PRE>
                      VMS/RMS INTERNAL DATA STRUCTURES
                                   by
                             David W. Deley
-                                 &copy;1993
+                                 ©1993
 
 
 Preface
@@ -64,23 +54,23 @@ or trailing spaces.
 
 After creating the file and exiting the editor do a $ DIR/FULL to see
 what we got.  Note for future reference the fields marked by the three
-chevrons '&gt;&gt;&gt;':
+chevrons '>>>':
 
 $ DIR/FULL ROSES.DAT
 
 Directory DISK3:[DELEYD.RMSDOC]
 
-&gt;&gt;&gt; ROSES.DAT;1               &gt;&gt;&gt; File ID:  (18227,76,0)
-&gt;&gt;&gt; Size:            1/3          Owner:    [SCN,DELEYD]
+>>> ROSES.DAT;1               >>> File ID:  (18227,76,0)
+>>> Size:            1/3          Owner:    [SCN,DELEYD]
     Created:   6-MAR-1993 21:58:21.41
     Revised:   3-OCT-1993 22:59:40.06 (2)
-    Expires:   &lt;None specified&gt;
-    Backup:    &lt;No backup recorded&gt;
-&gt;&gt;&gt; File organization:  Sequential
-&gt;&gt;&gt; File attributes:    Allocation: 3, Extend: 0, Global buffer count: 0
+    Expires:   <None specified>
+    Backup:    <No backup recorded>
+>>> File organization:  Sequential
+>>> File attributes:    Allocation: 3, Extend: 0, Global buffer count: 0
                         No version limit
-&gt;&gt;&gt; Record format:      Variable length, maximum 17 bytes
-&gt;&gt;&gt; Record attributes:  Carriage return carriage control
+>>> Record format:      Variable length, maximum 17 bytes
+>>> Record attributes:  Carriage return carriage control
     RMS attributes:     None
     Journaling enabled: None
     File protection:    System:RWED, Owner:RWED, Group:RWED, World:RWED
@@ -165,39 +155,39 @@ $ DUMP/HEADER/BLOCKS=(COUNT:0)/FORMAT ROSES.DAT
         Reserved area offset:                 255
         Extension segment number:             0
         Structure level and version:          2, 1
-&gt;&gt;&gt;     File identification:                  (18227,76,0)
+>>>     File identification:                  (18227,76,0)
         Extension file identification:        (0,0,0)
         VAX-11 RMS attributes
-&gt;&gt;&gt;         Record type:                      Variable
-&gt;&gt;&gt;         File organization:                Sequential
-&gt;&gt;&gt;         Record attributes:                Implied carriage control
+>>>         Record type:                      Variable
+>>>         File organization:                Sequential
+>>>         Record attributes:                Implied carriage control
             Record size:                      17
-&gt;&gt;&gt;         Highest block:                    3
-&gt;&gt;&gt;         End of file block:                1
-&gt;&gt;&gt;         End of file byte:                 70
+>>>         Highest block:                    3
+>>>         End of file block:                1
+>>>         End of file byte:                 70
             Bucket size:                      0
             Fixed control area size:          0
             Maximum record size:              0
             Default extension size:           0
             Global buffer count:              0
             Directory version limit:          0
-        File characteristics:                 &lt;none specified&gt;
+        File characteristics:                 <none specified>
         Map area words in use:                2
         Access mode:                          0
         File owner UIC:                       [SCN,DELEYD]
         File protection:                      S:RWED, O:RWED, G:RWED, W:RWED
         Back link file identification:        (17955,107,0)
-        Journal control flags:                &lt;none specified&gt;
+        Journal control flags:                <none specified>
         Active recovery units:                None
         Highest block written:                3
 
     Identification area
-&gt;&gt;&gt;     File name:                            ROSES.DAT;1
+>>>     File name:                            ROSES.DAT;1
         Revision number:                      2
         Creation date:                         6-MAR-1993 21:58:21.41
         Revision date:                         3-OCT-1993 22:59:40.06
-        Expiration date:                      &lt;none specified&gt;
-        Backup date:                          &lt;none specified&gt;
+        Expiration date:                      <none specified>
+        Backup date:                          <none specified>
 
     Map area
         Retrieval pointers
@@ -286,8 +276,8 @@ Disk $1$DUC13: (SB3), device type RA70, is online, mounted, file-oriented
     Allocation class               1
 
     Volume label             "DISK3"    Relative volume number                0
- &gt;&gt;&gt;Cluster size                   3    Transaction count                    44
-    Free blocks               109143 &gt;&gt;&gt;Maximum files allowed            141645
+ >>>Cluster size                   3    Transaction count                    44
+    Free blocks               109143 >>>Maximum files allowed            141645
     Extend quantity                5    Mount count                           3
     Mount status              System    Cache name          "_$1$DIA0:XQPCACHE"
     Extent cache size             64    Maximum blocks in extent cache    10914
@@ -566,17 +556,17 @@ VARIABLE:    The data portion of each record is preceded with a 2-byte
 FIXED:       All records are of a fixed length.
 
 STREAM:      The data portion of each record is terminated by the
-             characters &lt;CR&gt;&lt;LF&gt; (a carriage-return 0x0D byte followed
+             characters <CR><LF> (a carriage-return 0x0D byte followed
              by a line-feed 0x0A byte).  This sequence of characters may
              not appear within the data portion of a record as it
              indicates the end of a record.
 
-STREAM_CR:   The data portion of each record is terminated by a &lt;CR&gt;
+STREAM_CR:   The data portion of each record is terminated by a <CR>
              character (carriage-return 0x0D byte).  This character may
              not appear within the data portion of a record as it
              indicates the end of a record.
 
-STREAM_LF:   The data portion of each record is terminated by a &lt;LF&gt;
+STREAM_LF:   The data portion of each record is terminated by a <LF>
              character (line-feed 0x0A byte).  This character may not
              appear within the data portion a record as it indicates the
              end of a record.
@@ -736,8 +726,8 @@ ROSES.DAT;                                File ID:  (26230,6,0)
 Size:            1/3          Owner:    [SCN,DELEYD]
 Created:  23-MAR-1993 17:59:03.29
 Revised:  23-MAR-1993 17:59:03.48 (1)
-Expires:   &lt;None specified&gt;
-Backup:    &lt;No backup recorded&gt;
+Expires:   <None specified>
+Backup:    <No backup recorded>
 File organization:  Sequential
 File attributes:    Allocation: 3, Extend: 0, Global buffer count: 0, No version limit
 Record format:      Variable length, maximum 17 bytes
@@ -764,39 +754,39 @@ Header area
     Reserved area offset:                 255
     Extension segment number:             0
     Structure level and version:          2, 1
-&gt;&gt;&gt; File identification:                  (26230,6,0)
+>>> File identification:                  (26230,6,0)
     Extension file identification:        (0,0,0)
     VAX-11 RMS attributes
-&gt;&gt;&gt;     Record type:                      Variable
-&gt;&gt;&gt;     File organization:                Sequential
-&gt;&gt;&gt;     Record attributes:                Implied carriage control
+>>>     Record type:                      Variable
+>>>     File organization:                Sequential
+>>>     Record attributes:                Implied carriage control
         Record size:                      17
         Highest block:                    3
-&gt;&gt;&gt;     End of file block:                1
-&gt;&gt;&gt;     End of file byte:                 70
+>>>     End of file block:                1
+>>>     End of file byte:                 70
         Bucket size:                      0
         Fixed control area size:          0
         Maximum record size:              0
         Default extension size:           0
         Global buffer count:              0
         Directory version limit:          0
-    File characteristics:                 &lt;none specified&gt;
+    File characteristics:                 <none specified>
     Map area words in use:                2
     Access mode:                          0
     File owner UIC:                       [SCN,DELEYD]
     File protection:                      S:RWED, O:RWED, G:RWED, W:RWED
     Back link file identification:        (680,19,0)
-    Journal control flags:                &lt;none specified&gt;
+    Journal control flags:                <none specified>
     Active recovery units:                None
     Highest block written:                3
 
 Identification area
-&gt;&gt;&gt; File name:                            ROSES.DAT;6
+>>> File name:                            ROSES.DAT;6
     Revision number:                      1
     Creation date:                        23-MAR-1993 17:59:03.29
     Revision date:                        23-MAR-1993 17:59:03.48
-    Expiration date:                      &lt;none specified&gt;
-    Backup date:                          &lt;none specified&gt;
+    Expiration date:                      <none specified>
+    Backup date:                          <none specified>
 
 Map area
     Retrieval pointers
@@ -812,7 +802,7 @@ File ID (26230,6,0)   End of file block 1 / Allocated 3
 
 Virtual block number 1 (00000001), 512 (0200) bytes
 
-                         &lt;--bytes--+ +--text--&gt;
+                         <--bytes--+ +--text-->
                                    v v
  2C646572 20657261 20736573 6F52000E ..Roses are red, 000000
  6C622065 72612073 74656C6F 69560011 ..Violets are bl 000010
@@ -829,22 +819,22 @@ etc.)
 
 IN DEPTH ANALYSIS OF THE RECORDS IN THE FILE ABOVE:
 
-              |&lt;----- DATA (14 bytes) -----&gt;| length
+              |<----- DATA (14 bytes) ----->| length
               ---------------------------------------
               | , d e r   e r a   s e s o R | 00 0E | (hex 000E = 14)
               ---------------------------------------
 
-   fill |&lt;------- DATA (17 bytes) ---------&gt;| length
+   fill |<------- DATA (17 bytes) --------->| length
    --------------------------------------------------
    | 00 | , e u l b   e r a   s t e l o i V | 00 11 | (hex 0011 = 17)
    --------------------------------------------------
 
-              |&lt;----- DATA (14 bytes) -----&gt;| length
+              |<----- DATA (14 bytes) ----->| length
               ---------------------------------------
               | t e e w s   s i   r a g u S | 00 0E | (hex 000E = 14)
               ---------------------------------------
 
-       fill |&lt;------- DATA (15 bytes) -----&gt;| length
+       fill |<------- DATA (15 bytes) ----->| length
        ----------------------------------------------
        | 00 | ! u o y   e r a   o s   d n A | 00 0F | (hex 000F = 15)
        ----------------------------------------------
@@ -873,8 +863,8 @@ $ ANALYZE/RMS_FILE/INTERACTIVE ROSES.DAT;
 
 FILE HEADER
 
-&gt;&gt;&gt;  File Spec: DISK3:[DELEYD.ROSES.SEQ]ROSES.DAT;6
-&gt;&gt;&gt;  File ID: (26230,6,0)
+>>>  File Spec: DISK3:[DELEYD.ROSES.SEQ]ROSES.DAT;6
+>>>  File ID: (26230,6,0)
 	Owner UIC: [SCN,DELEYD]
 	Protection:  System: RWED, Owner: RWED, Group: RWED, World: RWED
 	Creation Date:   23-MAR-1993 17:59:03.29
@@ -887,13 +877,13 @@ FILE HEADER
 	Journaling Enabled:  none
 
 
-ANALYZE&gt; DOWN
+ANALYZE> DOWN
 
 RMS FILE ATTRIBUTES
 
-&gt;&gt;&gt;  File Organization: sequential
-&gt;&gt;&gt;  Record Format: variable
-&gt;&gt;&gt;  Record Attributes: carriage-return
+>>>  File Organization: sequential
+>>>  Record Format: variable
+>>>  Record Attributes: carriage-return
 	Maximum Record Size: 0
 	Longest Record: 17
 	Blocks Allocated: 3, Default Extend Size: 0
@@ -902,7 +892,7 @@ RMS FILE ATTRIBUTES
 	Global Buffer Count: 0
 
 
-ANALYZE&gt; DOWN
+ANALYZE> DOWN
 
 	DATA BYTES (VBN 1, offset %X'0000'):
 
@@ -912,7 +902,7 @@ ANALYZE&gt; DOWN
 			 2C 64 65 72 20 65 72 61|  0008  |are red,|
 
 
-ANALYZE&gt; REST
+ANALYZE> REST
 
 	DATA BYTES (VBN 1, offset %X'0010'):
 
@@ -971,7 +961,7 @@ File Header Block
 ---------------------------------------------------------------------
 |                                                                   | 10
 ---------------------------------------------------------------------
-|            FAT$W_RSIZE          |  FAT$B_RATTRIB |  FAT$B_RTYPE   | 14 &lt;-- FH2$W_RECATTR (offset to record attributes block)
+|            FAT$W_RSIZE          |  FAT$B_RATTRIB |  FAT$B_RTYPE   | 14 <-- FH2$W_RECATTR (offset to record attributes block)
 ---------------------------------------------------------------------
 |                            FAT$L_HIBLK                            | 18
 ---------------------------------------------------------------------
@@ -993,7 +983,7 @@ File Header Block
 ---------------------------------------------------------------------                       111111
 |     (FH2$W_UICGROUP)     FH2$L_FILEOWNER    (FH2$W_UICMEMBER)     | 3C                    5432109876543210
 ---------------------------------------------------------------------                      ------------------
-|         FH2$W_BACKLINK          |         FH2$W_FILEPROT          | 40  FH2$W_FILPROT -&gt; |DEWRDEWRDEWRDEWR|
+|         FH2$W_BACKLINK          |         FH2$W_FILEPROT          | 40  FH2$W_FILPROT -> |DEWRDEWRDEWRDEWR|
 ---------------------------------------------------------------------                      ------------------
 | FH2$B_BK_FIDNMX| FH2$B_BK_FIDRVN|         FH2$W_BK_FIDSEQ         | 44
 ---------------------------------------------------------------------
@@ -1006,17 +996,3 @@ File Header Block
 ---------------------------------------------------------------------
 |         FH2$W_CHECKSUM          |                                 | 1FC
 ---------------------------------------------------------------------
-</pre>
-
-<BR>
-<CENTER>
-<TABLE>
-<TR>
-    <td><A HREF="index.htm"><IMG SRC="backarro.gif" HEIGHT=31 WIDTH=31 BORDER=0></A></td>
-    <td><A HREF="index.htm">Back</A></TD>
-</TR>
-</TABLE>
-</CENTER>
-
-</body>
-</html>

@@ -1,7 +1,7 @@
 Documents in this folder were written by third parties who own all rights to their contents.
 
-| File                 | Author(s)                    | License                    |
-|----------------------+------------------------------+----------------------------|
-| `rms_internals.html` | David Deley <daviddeley.com> | All Rights Reserved © 1993 |
-|----------------------+------------------------------+----------------------------|
+| File              | Author(s)                    | License                    |
+|-------------------+------------------------------+----------------------------|
+| rms_internals.txt | David Deley <daviddeley.com> | All Rights Reserved © 1993 |
+|-------------------+------------------------------+----------------------------|
 
