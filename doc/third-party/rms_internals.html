@@ -1,0 +1,1022 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VMS/RMS INTERNAL DATA STRUCTURES</title>
+</head>
+
+<BODY BGCOLOR="#F8F8D1">
+<PRE>
+                     VMS/RMS INTERNAL DATA STRUCTURES
+                                  by
+                            David W. Deley
+                                 &copy;1993
+
+
+Preface
+
+This documentation examines the internal structures of RMS files on
+disk.
+
+Intended Audience
+
+The user should already have knowledge of the three file organizations:
+Sequential, Relative, and Indexed, and how they are used.  See the VMS
+manual 'Guide to File Applications' for basic background information
+about these three file organizations.  The user should also have a basic
+understanding of the ASCII character set and how each character is
+equivalent to a hexadecimal number.  The user should have a basic
+understanding of what a file is, what a directory is, and what a disk
+is.
+
+
+Associated Documents
+The following documents contain further related information:
+
+   * Guide to VMS File Applications
+   * VMS File System Internals, by Kirby McCoy, DIGITAL Press.
+
+-----------------------------------------------------------------------
+
+RMS INTERNAL DATA STRUCTURES
+
+PART I:  FILES ON DISKS (ODS-2)
+
+For our analysis we shall use the following familiar nursery rhyme and see
+how it looks inside a file of each allowed type above:
+
+             Roses are red,                       [14 chars]
+             Violets are blue,                    [17 chars]
+             Sugar is sweet                       [14 chars]
+             And so are you!                      [15 chars]
+
+This piece of familiar prose was chosen not so much for its literary
+value but rather because it is short and has some lines with an even
+number of characters and some lines with an odd number of characters.
+Note for future reference the length of each line.
+
+To begin let's use our favorite text editor such as EVE, EDT, or EDX and
+create a text file containing the above nursery rhyme.  Call the file
+ROSES.DAT .  You may try this as we go along to get a hands on feel for
+what goes on.  The file should contain exactly 4 lines, with no leading
+or trailing spaces.
+
+After creating the file and exiting the editor do a $ DIR/FULL to see
+what we got.  Note for future reference the fields marked by the three
+chevrons '&gt;&gt;&gt;':
+
+$ DIR/FULL ROSES.DAT
+
+Directory DISK3:[DELEYD.RMSDOC]
+
+&gt;&gt;&gt; ROSES.DAT;1               &gt;&gt;&gt; File ID:  (18227,76,0)
+&gt;&gt;&gt; Size:            1/3          Owner:    [SCN,DELEYD]
+    Created:   6-MAR-1993 21:58:21.41
+    Revised:   3-OCT-1993 22:59:40.06 (2)
+    Expires:   &lt;None specified&gt;
+    Backup:    &lt;No backup recorded&gt;
+&gt;&gt;&gt; File organization:  Sequential
+&gt;&gt;&gt; File attributes:    Allocation: 3, Extend: 0, Global buffer count: 0
+                        No version limit
+&gt;&gt;&gt; Record format:      Variable length, maximum 17 bytes
+&gt;&gt;&gt; Record attributes:  Carriage return carriage control
+    RMS attributes:     None
+    Journaling enabled: None
+    File protection:    System:RWED, Owner:RWED, Group:RWED, World:RWED
+    Access Cntrl List:  None
+
+    Total of 1 file, 1/3 blocks.
+
+Items to note are:
+   1.  The file name is ROSES.DAT;1
+   2.  The file ID is (18227,76,0)
+   3.  The file size is 1 block used, 3 blocks allocated.
+   4.  The file organization is 'Sequential'
+   5.  The record format is 'Variable Length'
+   6.  The record attributes are 'Carriage return carriage control'
+
+
+All of this information ABOUT the file is stored in the file's header.
+The file header is a block of data ABOUT the file in addition to the
+actual data records which comprise the file itself.  We can examine the
+contents of the file header with the following command (try this out on
+your ROSES.DAT file):
+
+$ DUMP/HEADER/BLOCKS=(COUNT:0)/NOFORMAT ROSES.DAT
+
+   Dump of file DISK3:[DELEYD.RMSDOC]ROSES.DAT;1
+   File ID (18227,76,0)   End of file block 1 / Allocated 3
+
+                                File Header
+
+    00000000 004C4733 02010000 FFFF6428 (d......3GL..... 000000
+    00010000 00030000 00110202 00000000 ................ 000010
+    00000000 00000000 00000000 00000046 F............... 000020
+    0015000B 00020000 00000000 00000000 ................ 000030
+    00000004 00000000 0000006B 46230000 ..#Fk........... 000040
+    20202020 20313B54 41442E53 45534F52 ROSES.DAT;1      000050
+    FDC00096 91F2EACE 4C200002 20202020     .. LÎêò...Àý 000060
+    00000000 00000000 00000097 37C9709C .pÉ7............ 000070
+    20202020 20202020 20200000 00000000 ......           000080
+    20202020 20202020 20202020 20202020                  000090
+    20202020 20202020 20202020 20202020                  0000A0
+    20202020 20202020 20202020 20202020                  0000B0
+    00000000 14174B02 20202020 20202020         .K...... 0000C0
+    00000000 00000000 00000000 00000000 ................ 0000D0
+    00000000 00000000 00000000 00000000 ................ 0000E0
+    00000000 00000000 00000000 00000000 ................ 0000F0
+    00000000 00000000 00000000 00000000 ................ 000100
+    00000000 00000000 00000000 00000000 ................ 000110
+    00000000 00000000 00000000 00000000 ................ 000120
+    00000000 00000000 00000000 00000000 ................ 000130
+    00000000 00000000 00000000 00000000 ................ 000140
+    00000000 00000000 00000000 00000000 ................ 000150
+    00000000 00000000 00000000 00000000 ................ 000160
+    00000000 00000000 00000000 00000000 ................ 000170
+    00000000 00000000 00000000 00000000 ................ 000180
+    00000000 00000000 00000000 00000000 ................ 000190
+    00000000 00000000 00000000 00000000 ................ 0001A0
+    00000000 00000000 00000000 00000000 ................ 0001B0
+    00000000 00000000 00000000 00000000 ................ 0001C0
+    00000000 00000000 00000000 00000000 ................ 0001D0
+    00000000 00000000 00000000 00000000 ................ 0001E0
+    CA660000 00000000 00000000 00000000 ..............fÊ 0001F0
+
+
+The layout of the header block is described in appendix A.  It's also
+more thoroughly described in the book "VMS File System Internals" by
+Kirby McCoy, order number EY-F575E-DP From Digital Press.  Fortunately
+we don't have to delve into deciphering the contents of this block.  We
+can get a formatted output of the block's contents by using the /FORMAT
+qualifier as follows (try this out on your ROSES.DAT file):
+
+$ DUMP/HEADER/BLOCKS=(COUNT:0)/FORMAT ROSES.DAT
+
+    Dump of file DISK3:[DELEYD.RMSDOC]ROSES.DAT;1
+    File ID (18227,76,0)   End of file block 1 / Allocated 3
+
+                                 File Header
+
+    Header area
+        Identification area offset:           40
+        Map area offset:                      100
+        Access control area offset:           255
+        Reserved area offset:                 255
+        Extension segment number:             0
+        Structure level and version:          2, 1
+&gt;&gt;&gt;     File identification:                  (18227,76,0)
+        Extension file identification:        (0,0,0)
+        VAX-11 RMS attributes
+&gt;&gt;&gt;         Record type:                      Variable
+&gt;&gt;&gt;         File organization:                Sequential
+&gt;&gt;&gt;         Record attributes:                Implied carriage control
+            Record size:                      17
+&gt;&gt;&gt;         Highest block:                    3
+&gt;&gt;&gt;         End of file block:                1
+&gt;&gt;&gt;         End of file byte:                 70
+            Bucket size:                      0
+            Fixed control area size:          0
+            Maximum record size:              0
+            Default extension size:           0
+            Global buffer count:              0
+            Directory version limit:          0
+        File characteristics:                 &lt;none specified&gt;
+        Map area words in use:                2
+        Access mode:                          0
+        File owner UIC:                       [SCN,DELEYD]
+        File protection:                      S:RWED, O:RWED, G:RWED, W:RWED
+        Back link file identification:        (17955,107,0)
+        Journal control flags:                &lt;none specified&gt;
+        Active recovery units:                None
+        Highest block written:                3
+
+    Identification area
+&gt;&gt;&gt;     File name:                            ROSES.DAT;1
+        Revision number:                      2
+        Creation date:                         6-MAR-1993 21:58:21.41
+        Revision date:                         3-OCT-1993 22:59:40.06
+        Expiration date:                      &lt;none specified&gt;
+        Backup date:                          &lt;none specified&gt;
+
+    Map area
+        Retrieval pointers
+            Count:          3        LBN:     726039
+
+    Checksum:                                 51814
+
+
+Items to note are:
+   1.  The file ID is (18227,76,0)
+
+   2.  The record type is 'Variable'
+       (same as "record format:  Variable Length")
+
+   3.  The file organization is 'Sequential'
+
+   4.  The record attributes are 'Implied carriage control'
+       (same as "Record attributes:  Carriage return carriage control")
+
+   5.  The highest block is 3.
+       the end of file block is 1.
+       (same as "Size:  1/3")
+
+   6.  The file name is ROSES.DAT;1
+
+Note that the $ DIR/FULL command gets all its information ABOUT a file
+from the file's header.
+
+
+File headers themselves are not stored as part of the file itself.  All
+file headers are stored in file [000000]INDEXF.SYS  The file ID number
+gives us the information needed to locate our desired file header in
+INDEXF.SYS .  From our example above, the file ID is (18227,76,0)
+
+A file ID consists of 3 parts:
+
+     Part 1 is the file number.  The file number is the portion of the
+     file ID that is required for calculating the offset of the file's
+     header in INDEXF.SYS .  In our example the file number is 18227.
+
+     Part 2 is the file sequence number.  When the file the file header
+     block points to is deleted then the header block is free to be
+     reused.  When the header block is reused to point to a new file the
+     sequence number is incremented by one.  Thus after using the file
+     number part of the file ID to locate the header block in
+     INDEXF.SYS, a check of the file sequence number insures that our
+     file hasn't been deleted and the file header is not now pointing to
+     some new file.  In our example the file sequence number is 76,
+     indicating that this file header block has been used to point to 76
+     different files since INDEXF.SYS was created.
+
+     Part 3 is the relative volume number of the file.  If the file is
+     resident on a bound volume set, this number indicates the relative
+     volume where the file physically resides.  In our example the
+     relative volume number is 0, indicating our disk is not part of a
+     multiple volume set.
+
+(Identify the file number, sequence number, and relative volume number
+for your ROSES.DAT file.)
+
+We need two more pieces of information about the disk itself on which
+our file resides before we can calculate the offset into INDEXF.SYS of
+our file's header.  These two pieces of information are:
+
+        1: The cluster size
+        2: The maximum number of files allowed on the disk
+
+This information is easily obtained with the following DCL command:
+
+     $ SHOW DEVICE/FULL ddcu:
+
+Continuing our example:
+
+$ SHOW DEVICE/FULL DISK3
+
+Disk $1$DUC13: (SB3), device type RA70, is online, mounted, file-oriented
+    device, shareable, served to cluster via MSCP Server, error logging is
+    enabled.
+
+    Error count                    0    Operations completed            1824293
+    Owner process                 ""    Owner UIC                 [SYS,SYSBOOT]
+    Owner process ID        00000000    Dev Prot    S:RWED,O:RWED,G:RWED,W:RWED
+    Reference count               19    Default buffer size                 512
+    Total blocks             1133160    Sectors per track                    60
+    Total cylinders             1349    Tracks per cylinder                  14
+    Allocation class               1
+
+    Volume label             "DISK3"    Relative volume number                0
+ &gt;&gt;&gt;Cluster size                   3    Transaction count                    44
+    Free blocks               109143 &gt;&gt;&gt;Maximum files allowed            141645
+    Extend quantity                5    Mount count                           3
+    Mount status              System    Cache name          "_$1$DIA0:XQPCACHE"
+    Extent cache size             64    Maximum blocks in extent cache    10914
+    File ID cache size            64    Blocks currently in extent cache  10692
+    Quota cache size               0    Maximum buffers in FCP cache       1752
+
+  Volume status:  subject to mount verification, write-through caching enabled.
+  Volume is also mounted on SB8, SB12.
+
+From this we see that 'cluster size' = 3, and 'Maximum files allowed' = 141645.
+
+(Try this out.  Find the values for 'cluster size' and 'Maximum files
+allowed' for your disk which has your ROSES.DAT file.)
+
+
+The formula for calculating the offset of our file's header block in
+INDEXF.SYS is:
+
+                                  Maximum_files_allowed
+offset = (4 * cluster_size) +  RUP---------------------  + file_number
+                                         4096
+
+(Here RUP means round up to the nearest integer.)
+
+The first two factors calculate the number of blocks in INDEXF.SYS we
+need to skip over before we come to the file header blocks.  First we
+skip over the first 4 clusters of the file which are used for the boot
+block and home blocks.  Then we skip over the index file bitmap, the
+size of which is dependent upon the maximum number of files allowed for
+the disk.  The bitmap is large enough to hold one bit for each file
+header indicating whether it is currently being used or not.  There are
+8 bits in a byte, and 512 bytes in a block, so each bitmap block
+accounts for 8*512=4096 files.  Hence the size of the bitmap in blocks
+is the maximum number of files permitted on the disk divided by 4096,
+and rounded up to the nearest integer.
+
+For our example we have:
+
+                         141645
+block_offset = (4 * 3) + ------ + 18227
+                          4096
+
+             = 18275
+
+(Calculate the offset using your values for cluster_size,
+Maximum_files_allowed, and file_number.)
+
+Having performed the above calculation we can now directly access the
+header block for our file in INDEXF.SYS using the command:
+
+$ DUMP/BLOCKS=(START:block_offset,COUNT:1)/FILE_HEADER  ddcu:[000000]INDEXF.SYS
+
+Try this out using your calculated value for block_offset.  Verify that
+the header information is the same as the information obtained earlier
+when we used the command $ DUMP/HEADER/BLOCKS=(COUNT:0)/FORMAT ROSES.DAT
+
+
+Now that we've located the file header we can now locate the file itself
+on the disk.  At the end of the file header is the Map Area where the
+Retrieval Pointers are located.  The Retrieval Pointers tell us where
+the file is located on the disk.  For our example, the file starts at
+Logical Block Number (LBN) 726039 and goes for a count of 3 blocks.  We
+can examine directly those blocks on the disk to verify that they do
+contain the contents of our file.  (The following command requires
+LOG_IO or PHY_IO privilege.  Try this out if you can using for START the
+LBN value listed at the end of your formatted file header dump):
+
+$ DUMP/BLOCKS=(START:726039,COUNT:1) DISK3:
+
+    Dump of device DISK3: on 24-MAR-1993 20:27:24.60
+
+    Logical block number 726039 (000B1417), 512 (0200) bytes
+
+     2C646572 20657261 20736573 6F52000E ..Roses are red, 000000
+     6C622065 72612073 74656C6F 69560011 ..Violets are bl 000010
+     73207369 20726167 7553000E 002C6575 ue,...Sugar is s 000020
+     65726120 6F732064 6E41000F 74656577 weet..And so are 000030
+     00000000 00000000 FFFF0021 756F7920  you!........... 000040
+     00000000 00000000 00000000 00000000 ................ 000050
+
+ Note: Some systems may have a disk defragmenter program such as
+       Diskeeper running in the background.  These programs defragment
+       the disk by silently rearranging the files on the disk when
+       nobody's looking.  If you notice your file's starting LBN has
+       unexpectedly changed it may be because a disk defragmenter
+       program has moved it to a new location.
+
+
+We have now found the actual contents of our file.  We can get the same
+dump of our ROSES.DAT file by using the simple command:
+
+$ DUMP ROSES.DAT
+
+    Dump of file DISK3:[DELEYD.RMSDOC]ROSES.DAT;1
+    File ID (18227,76,0)   End of file block 1 / Allocated 3
+
+    Virtual block number 1 (00000001), 512 (0200) bytes
+
+     2C646572 20657261 20736573 6F52000E ..Roses are red, 000000
+     6C622065 72612073 74656C6F 69560011 ..Violets are bl 000010
+     73207369 20726167 7553000E 002C6575 ue,...Sugar is s 000020
+     65726120 6F732064 6E41000F 74656577 weet..And so are 000030
+     00000000 00000000 00000021 756F7920  you!........... 000040
+     00000000 00000000 00000000 00000000 ................ 000050
+
+
+So far we have seen how to locate a file using the file ID.  However,
+the usual way of accessing a file is by specifying the name of the file
+and what directory it's in.  In our example, our file name is ROSES.DAT
+and it's in directory [DELEYD.RMSDOC].
+
+This is where directory files (*.DIR) come in.  The very top level
+directory on an ODS-2 disk is [000000]000000.DIR;1 .  This file always
+has file ID (4,4,0).  So all we need to do is locate the header for it
+in the INDEXF.SYS file.  At this point you may wonder how do we access
+the INDEXF.SYS file?  The answer is the location of the INDEXF.SYS file
+is determined when the disk is mounted and saved in the Volume Control
+Block (VCB).  Once the disk is mounted the INDEXF.SYS file is always
+accessible.
+
+So, given the file name [DELEYD.RMSDOC]ROSES.DAT;1 , we can access the
+contents of that file as follows:
+
+    1.  Access INDEXF.SYS and obtain the file header for file ID
+        (4,4,0) which is [000000]000000.DIR;1 .  From the file header
+        obtain the location of this file on the disk.  Look in the file
+        for a record giving the file ID of file [000000]DELEYD.DIR;1
+
+    2.  Using the file ID just obtained for file [000000]DELEYD.DIR;1,
+        access INDEXF.SYS and get the file header for this file, then
+        from the file header obtain the location of this file on the
+        disk.  Look in this file for a record giving the file ID of file
+        [DELEYD]RMSDOC.DIR;1
+
+    3.  Using the file ID just obtained for file [DELEYD]RMSDOC.DIR;1,
+        access INDEXF.SYS and get the file header for this file, then
+        from the file header obtain the location of this file on the
+        disk.  Look in this file for a record giving the file ID of file
+        [DELEYD.RMSDOC]ROSES.DAT;1
+
+    4.  Using the file ID just obtained for file [DELEYD.RMSDOC]ROSES.DAT;1,
+        access INDEXF.SYS and get the file header for this file, then
+        from the file header obtain the location of this file on the
+        disk.  We have now found the location of our desired file on the
+        disk.
+
+Note: This process of locating a file is a major part of what happens
+      when a program requests to OPEN a file.  Once the file is opened,
+      (i.e. the location of the file is found), then the program can
+      easily access the contents of the file.
+
+
+=======================================================================
+
+PART II: INTERNAL STRUCTURE OF RMS FILES
+
+There are three possible file organizations:
+
+        1.  Sequential
+        2.  Relative
+        3.  Indexed
+
+Within each file organization there are seven possible record formats:
+
+        1.  Variable
+        2.  Fixed
+        3.  Stream
+        4.  Stream_CR
+        5.  Stream_LF
+        6.  Undefined
+        7.  VFC  (Variable-Length with Fixed-Length Control Field)
+
+Within each record there are four possible record attributes:
+
+         1.  Carriage_control Carriage_return
+         2.  Fortran
+         3.  Print
+         4.  None
+
+The following abbreviations are used throughout the rest of this paper:
+Abbreviations:
+
+   File Formats:
+      SEQ - Sequential
+      REL - Relative
+      IND - Indexed
+
+   Record Formats:
+      VAR - Variable length
+      FIX - Fixed length
+      STR - Stream
+      SCR - Stream_CR
+      SLF - Stream_LF
+      UND - Undefined
+      VFC - Variable with Fixed length control
+
+  Record Attributes:
+      CAR - Carriage_control Carriage_return
+      FOR - Fortran
+      PRT - Print
+      NON - None
+
+Not all combinations of file organization, record format, and record
+attributes are allowed.  The tables below lists all the allowable
+combinations.  'X' marks an allowable combination:
+
+Table of allowable combinations:
+
+SEQUENTIAL
+
+     VAR    FIX    STR    SCR    SLF    UND    VFC
+CAR   X      X      X      X      X      X      X
+FOR   X      X      X      X      X      X      X
+PRT   .      .      .      .      .      .      X
+NON   X      X      X      X      X      X      X
+
+
+RELATIVE
+
+     VAR    FIX    STR    SCR    SLF    UND    VFC
+CAR   X      X      .      .      .      .      X
+FOR   X      X      .      .      .      .      X
+PRT   .      .      .      .      .      .      X
+NON   X      X      .      .      .      .      X
+
+
+INDEXED
+
+     VAR    FIX    STR    SCR    SLF    UND    VFC
+CAR   X      X      .      .      .      .      .
+FOR   X      X      .      .      .      .      .
+PRT   .      .      .      .      .      .      .
+NON   X      X      .      .      .      .      .
+
+There are a total of 38 different possible combinations.
+
+The guide to VMS File Applications explains in detail the different file
+organizations, record formats, and attributes.  A brief summary is given
+here:
+
+FILE ORGANIZATIONS:
+
+SEQUENTIAL:  In a sequential file the records follow one another in
+             sequential order.  Records are accessed in sequential
+             order, starting with the first record and continuing
+             through the file until the last record is reached.
+             Attempting to access a next record after the last records
+             results in an End Of File status.
+
+RELATIVE:    In a relative file the records are placed in fixed length
+             cells which follow one another in sequential order.  The
+             records may be accessed sequentially as in a sequential
+             file, or the records may be accessed directly via record
+             number.
+
+INDEXED:     In an indexed file the placement of the records themselves
+             is transparent to the user.  RMS stores and retrieves the
+             records for the user.  A fixed portion of each record is
+             declared to be the primary key.  For example, the first 10
+             bytes of each record could be declared the primary key.
+             Records may then be retrieved by specifying the primary key
+             portion of the desired record.  Records may also be
+             retrieved in sequential order, with the records being
+             sorted according to the primary key.
+
+
+RECORD FORMAT:
+
+VARIABLE:    The data portion of each record is preceded with a 2-byte
+             binary count field that specifies the length of the record
+             in bytes, excluding the byte field itself.  Each new record
+             begins on an even byte (WORD aligned).  A null character is
+             appended to the end of the previous record if necessary so
+             the next record will begin on a padded boundary.
+
+FIXED:       All records are of a fixed length.
+
+STREAM:      The data portion of each record is terminated by the
+             characters &lt;CR&gt;&lt;LF&gt; (a carriage-return 0x0D byte followed
+             by a line-feed 0x0A byte).  This sequence of characters may
+             not appear within the data portion of a record as it
+             indicates the end of a record.
+
+STREAM_CR:   The data portion of each record is terminated by a &lt;CR&gt;
+             character (carriage-return 0x0D byte).  This character may
+             not appear within the data portion of a record as it
+             indicates the end of a record.
+
+STREAM_LF:   The data portion of each record is terminated by a &lt;LF&gt;
+             character (line-feed 0x0A byte).  This character may not
+             appear within the data portion a record as it indicates the
+             end of a record.
+
+UNDEFINED:   There are no records per se, the file is just a stream of
+             bytes starting with the first byte and ending with the last
+             byte.
+
+VFC:         Variable-Length with Fixed-Length Control Field.  The data
+             portion of each record is preceded by four bytes.  The
+             first two bytes (WORD) give the length of the record in
+             bytes.  The third byte is the PREFIX byte which contains
+             carriage control information for a printer or output device
+             to be executed prior to printing the record.  The fourth
+             byte is the SUFFIX byte which contains carriage control
+             information for a printer or output device to be executed
+             after printing the record.  The PREFIX and SUFFIX bytes are
+             only used if the file's record attributes are 'Print file
+             carriage control'.  If the file's record attributes are not
+             'Print file carriage control' then the PREFIX byte and the
+             SUFFIX byte contain 0x00 and are not used.
+
+   The coding scheme for both the PREFIX and the SUFFIX bytes is shown
+   in the following table:
+
+   -------------------------------------------------------------------
+   Bit 7    Bits 6-0    Meaning
+   -------------------------------------------------------------------
+    0        0             No carriage control is specified.
+
+    0        1-7F          Count of newlines; linefeed(s) followed by a
+                           carriage return.
+
+   ------------------------------------------------------------------
+   Bit 7   Bit 6   Bit 5   Bits 4-0   Meaning
+   ------------------------------------------------------------------
+    1        0       0       0-1F     Output the single ASCII control
+                                      character specified by the
+                                      configuration of bits 4 through
+                                      0 (7-bit character set).
+
+   1        1       0       0-1F      Output the single ASCII control
+                                      character specified by the
+                                      configuration of bits 4 through
+                                      0 that are translated as ASCII
+                                      characters 128 through 159
+                                      (8-bit character set).
+
+   1        1        1      0-1F      RESERVED
+   ------------------------------------------------------------------
+
+
+
+RECORD ATTRIBUTES:
+The record attributes provide information to a printer or other output
+device on how to display the records.
+
+         1.  Carriage_control Carriage_return
+         2.  Fortran
+         3.  Print
+         4.  None
+
+
+CARRIAGE_CONTROL:  Indicates that each record is to be preceded by a
+                   line feed and followed by a carriage return when the
+                   record is written to a carriage control device such
+                   as a line printer or terminal.  (i.e. each record is
+                   displayed on a new line).
+
+FORTRAN:           Indicates that the first byte of the record data
+                   portion is to be interpreted as a FORTRAN carriage
+                   control character.
+
+                   ---------------------------------------------------
+                   1st byte   ASCII   Meaning
+                   ---------------------------------------------------
+                    0x00      (null)  Null carriage control (sequence:
+                                      print rest of record data).
+
+                    0x20      (space) Single-space carriage control
+                                      (sequence: line feed, print rest
+                                      of record data, carriage return).
+
+                    0x30       0      Double-space carriage control
+                                      (sequence: line feed, line feed,
+                                      print rest of record data,
+                                      carriage return).
+
+                    0x31       1      Page eject carriage control
+                                      (sequence: form feed, print rest
+                                      of record data, carriage return).
+
+                    0x28       +      Overprint carriage control Allows
+                                      double printing for emphasis.
+                                      (sequence: print rest of record
+                                      [without first doing a line feed],
+                                      carriage return).
+
+                    0x24       $      Prompt carriage control (sequence:
+                                      line feed, print rest of record
+                                      data.  [Do not follow with
+                                      carriage return]).
+
+                    Other values      Same as ASCII space character:
+                                      single-space carriage control.
+                   ---------------------------------------------------
+
+PRINT:             Allowed only for VFC files, indicates that the PREFIX
+                   and SUFFIX bytes contain carriage control information.
+                   See the description above for VFC record format.
+
+NONE:              No print formatting is specified.  The record data is
+                   sent to the output device as a stream of bytes.
+
+
+
+EXAMINING THE INTERNALS OF A FILE:
+
+Text files created by EDT or a TPU based editor like EVE or EDX are by
+default sequential files with variable length records and have record
+attribute of Carriage-Control Carriage-Return.  We will examine in depth
+here the internals of this type of text file containing the "Roses are
+red..." poem used in part I.  Examinations of the other possible file
+formats are done similarly.
+
+There are so many ways to examine the contents of a file that it may
+appear confusing at first.  Just keep in mind that this is the same file
+whose contents are being viewed numerous different ways.
+
+We will perform the following five analyses of the text file ROSES.DAT
+created using EDT or a TPU based editor such as EVE or EDX:
+
+       1.  FDL specifications for file
+       2.  $ DIR/FULL
+       3.  $ DUMP/HEADER/FORMAT/BLOCKS=(COUNT:0)
+       4.  $ DUMP
+       5.  Graphic analysis of dump
+       6.  ANALYZE/RMS_FILE/INTERACTIVE
+
+
+(FDL specification):
+
+File:  ROSES.DAT
+
+FILE
+	ORGANIZATION		sequential
+RECORD
+	FORMAT			variable
+	CARRIAGE_CONTROL	carriage_return
+===============================================================================
+
+$ DIR/FULL ROSES.DAT;
+
+Directory DISK3:[DELEYD.ROSES.SEQ]
+
+ROSES.DAT;                                File ID:  (26230,6,0)
+Size:            1/3          Owner:    [SCN,DELEYD]
+Created:  23-MAR-1993 17:59:03.29
+Revised:  23-MAR-1993 17:59:03.48 (1)
+Expires:   &lt;None specified&gt;
+Backup:    &lt;No backup recorded&gt;
+File organization:  Sequential
+File attributes:    Allocation: 3, Extend: 0, Global buffer count: 0, No version limit
+Record format:      Variable length, maximum 17 bytes
+Record attributes:  Carriage return carriage control
+RMS attributes:     None
+Journaling enabled: None
+File protection:    System:RWED, Owner:RWED, Group:RWED, World:RWED
+Access Cntrl List:  None
+
+Total of 1 file, 1/3 blocks.
+===============================================================================
+
+$ DUMP/HEADER/FORMAT/BLOCKS=COUNT:0 ROSES.DAT
+
+Dump of file DISK3:[DELEYD.ROSES.SEQ]ROSES.DAT;6
+File ID (26230,6,0)   End of file block 1 / Allocated 3
+
+                             File Header
+
+Header area
+    Identification area offset:           40
+    Map area offset:                      100
+    Access control area offset:           255
+    Reserved area offset:                 255
+    Extension segment number:             0
+    Structure level and version:          2, 1
+&gt;&gt;&gt; File identification:                  (26230,6,0)
+    Extension file identification:        (0,0,0)
+    VAX-11 RMS attributes
+&gt;&gt;&gt;     Record type:                      Variable
+&gt;&gt;&gt;     File organization:                Sequential
+&gt;&gt;&gt;     Record attributes:                Implied carriage control
+        Record size:                      17
+        Highest block:                    3
+&gt;&gt;&gt;     End of file block:                1
+&gt;&gt;&gt;     End of file byte:                 70
+        Bucket size:                      0
+        Fixed control area size:          0
+        Maximum record size:              0
+        Default extension size:           0
+        Global buffer count:              0
+        Directory version limit:          0
+    File characteristics:                 &lt;none specified&gt;
+    Map area words in use:                2
+    Access mode:                          0
+    File owner UIC:                       [SCN,DELEYD]
+    File protection:                      S:RWED, O:RWED, G:RWED, W:RWED
+    Back link file identification:        (680,19,0)
+    Journal control flags:                &lt;none specified&gt;
+    Active recovery units:                None
+    Highest block written:                3
+
+Identification area
+&gt;&gt;&gt; File name:                            ROSES.DAT;6
+    Revision number:                      1
+    Creation date:                        23-MAR-1993 17:59:03.29
+    Revision date:                        23-MAR-1993 17:59:03.48
+    Expiration date:                      &lt;none specified&gt;
+    Backup date:                          &lt;none specified&gt;
+
+Map area
+    Retrieval pointers
+        Count:          3        LBN:     314391
+
+Checksum:                                 32694
+===============================================================================
+
+$ DUMP ROSES.DAT;
+
+Dump of file DISK3:[DELEYD.ROSES.SEQ]ROSES.DAT;6
+File ID (26230,6,0)   End of file block 1 / Allocated 3
+
+Virtual block number 1 (00000001), 512 (0200) bytes
+
+                         &lt;--bytes--+ +--text--&gt;
+                                   v v
+ 2C646572 20657261 20736573 6F52000E ..Roses are red, 000000
+ 6C622065 72612073 74656C6F 69560011 ..Violets are bl 000010
+ 73207369 20726167 7553000E 002C6575 ue,...Sugar is s 000020
+ 65726120 6F732064 6E41000F 74656577 weet..And so are 000030
+ 00000000 00000000 FFFF0021 756F7920  you!........... 000040
+ 00000000 00000000 00000000 00000000 ................ 000050
+
+(NOTE:  The hexadecimal bytes are read from right to left, starting at
+the top line column 4, and reading backwards: '0E', '00', '52', '6F',...
+The corresponding ASCII text is given on the right and read normally
+from left to right.  Note that '52' is hex for 'R', '6F' is hex for 'o',
+etc.)
+
+IN DEPTH ANALYSIS OF THE RECORDS IN THE FILE ABOVE:
+
+              |&lt;----- DATA (14 bytes) -----&gt;| length
+              ---------------------------------------
+              | , d e r   e r a   s e s o R | 00 0E | (hex 000E = 14)
+              ---------------------------------------
+
+   fill |&lt;------- DATA (17 bytes) ---------&gt;| length
+   --------------------------------------------------
+   | 00 | , e u l b   e r a   s t e l o i V | 00 11 | (hex 0011 = 17)
+   --------------------------------------------------
+
+              |&lt;----- DATA (14 bytes) -----&gt;| length
+              ---------------------------------------
+              | t e e w s   s i   r a g u S | 00 0E | (hex 000E = 14)
+              ---------------------------------------
+
+       fill |&lt;------- DATA (15 bytes) -----&gt;| length
+       ----------------------------------------------
+       | 00 | ! u o y   e r a   o s   d n A | 00 0F | (hex 000F = 15)
+       ----------------------------------------------
+
+                                            | length
+                                            ---------
+                                            | FF FF | (hex FFFF = -1)
+                                            ---------
+NOTES:
+-1 signals end of file
+
+The data is preceded by a word specifying the length of the data.
+The NULL fill byte at the end of the second and fourth record is so the
+next record will start on a word aligned (even byte) boundary.
+
+The file header also specifies the end of file is byte 70 of block 1.
+
+The data layout is exactly the same as for ROSES_SEQ_VAR_NON.DAT .  The
+only difference is in the file header.  The file header for
+ROSES.DAT here specifies record attributes of Carriage Control Carriage
+Return, whereas the file header for ROSES_SEQ_VAR_NON.DAT specifies no
+record attributes.
+========================================================================
+
+$ ANALYZE/RMS_FILE/INTERACTIVE ROSES.DAT;
+
+FILE HEADER
+
+&gt;&gt;&gt;  File Spec: DISK3:[DELEYD.ROSES.SEQ]ROSES.DAT;6
+&gt;&gt;&gt;  File ID: (26230,6,0)
+	Owner UIC: [SCN,DELEYD]
+	Protection:  System: RWED, Owner: RWED, Group: RWED, World: RWED
+	Creation Date:   23-MAR-1993 17:59:03.29
+	Revision Date:   23-MAR-1993 17:59:03.48, Number: 1
+	Expiration Date: none specified
+	Backup Date:     none posted
+	Contiguity Options:  none
+	Performance Options: none
+	Reliability Options: none
+	Journaling Enabled:  none
+
+
+ANALYZE&gt; DOWN
+
+RMS FILE ATTRIBUTES
+
+&gt;&gt;&gt;  File Organization: sequential
+&gt;&gt;&gt;  Record Format: variable
+&gt;&gt;&gt;  Record Attributes: carriage-return
+	Maximum Record Size: 0
+	Longest Record: 17
+	Blocks Allocated: 3, Default Extend Size: 0
+	End-of-File VBN: 1, Offset: %X'0046'
+	File Monitoring: disabled
+	Global Buffer Count: 0
+
+
+ANALYZE&gt; DOWN
+
+	DATA BYTES (VBN 1, offset %X'0000'):
+
+			  7  6  5  4  3  2  1  0          01234567
+			------------------------          --------
+			 20 73 65 73 6F 52 00 0E|  0000  |..Roses |
+			 2C 64 65 72 20 65 72 61|  0008  |are red,|
+
+
+ANALYZE&gt; REST
+
+	DATA BYTES (VBN 1, offset %X'0010'):
+
+			  7  6  5  4  3  2  1  0          01234567
+			------------------------          --------
+			 74 65 6C 6F 69 56 00 11|  0000  |..Violet|
+			 6C 62 20 65 72 61 20 73|  0008  |s are bl|
+			             00 2C 65 75|  0010  |ue,.    |
+
+	DATA BYTES (VBN 1, offset %X'0024'):
+
+			  7  6  5  4  3  2  1  0          01234567
+			------------------------          --------
+			 20 72 61 67 75 53 00 0E|  0000  |..Sugar |
+			 74 65 65 77 73 20 73 69|  0008  |is sweet|
+
+	DATA BYTES (VBN 1, offset %X'0034'):
+
+			  7  6  5  4  3  2  1  0          01234567
+			------------------------          --------
+			 6F 73 20 64 6E 41 00 0F|  0000  |..And so|
+			 75 6F 79 20 65 72 61 20|  0008  | are you|
+			                   00 21|  0010  |!.      |
+
+%ANLRMS-I-RESTDONE, All structures at this level have been displayed.
+
+
+Analysis of all the other sequential file types are given in individual
+files in the [.SEQ] directory.
+
+===============================================================================
+APPENDIX A:
+
+LAYOUT OF THE FILE HEADER BLOCK
+
+Offsets into the file header block are defined by the following
+modules:
+
+      module $FH2DEF in SYS$LIBRARY:LIB.MLB       (header)
+      module $FCHDEF in SYS$LIBRARY:LIB.MLB       (file characteristics)
+      module $FJNDEF in SYS$LIBRARY:LIB.MLB       (journal control flags)
+      module $CLSDEF in SYS$LIBRARY:STARLET.MLB   (security classification)
+      module $FI2DEF in SYS$LIBRARY:LIB.MLB       (ident area)
+      module $FM2DEF in SYS$LIBRARY:LIB.MLB       (retrieval pointer format)
+      module $ACEDEF in SYS$LIBRARY:STARLET.MLB   (access control entry)
+
+File Header Block
+---------------------------------------------------------------------
+|                                                  | FH2$B_IDOFFSET | 00
+---------------------------------------------------------------------
+|                                                                   | 04
+---------------------------------------------------------------------
+|          FH2$W_FID_SEQ          |            FH2$W_FID            | 08
+---------------------------------------------------------------------
+|                                 |  FH2$B_FID_NMX |  FH2$B_FID_RVN | 0C
+---------------------------------------------------------------------
+|                                                                   | 10
+---------------------------------------------------------------------
+|            FAT$W_RSIZE          |  FAT$B_RATTRIB |  FAT$B_RTYPE   | 14 &lt;-- FH2$W_RECATTR (offset to record attributes block)
+---------------------------------------------------------------------
+|                            FAT$L_HIBLK                            | 18
+---------------------------------------------------------------------
+|                            FAT$L_EFBLK                            | 1C
+---------------------------------------------------------------------
+|  FAT$B_VFCSIZE |  FAT$B_BKTSIZE |           FAT$W_FFBYTE          | 20
+---------------------------------------------------------------------
+|          FAT$W_DEFEXT           |           FAT$W_MAXREC          | 24
+---------------------------------------------------------------------
+|                                 |            FAT$W_GBC            | 28
+---------------------------------------------------------------------
+|                                                                   | 2C
+---------------------------------------------------------------------
+|          FAT$W_VERSIONS         |                                 | 30
+---------------------------------------------------------------------
+|                                                                   | 34
+---------------------------------------------------------------------
+| FH2$B_ACC_MODE | FH2$B_MAP_INUSE|          FH2$W_RECPROT          | 38
+---------------------------------------------------------------------                       111111
+|     (FH2$W_UICGROUP)     FH2$L_FILEOWNER    (FH2$W_UICMEMBER)     | 3C                    5432109876543210
+---------------------------------------------------------------------                      ------------------
+|         FH2$W_BACKLINK          |         FH2$W_FILEPROT          | 40  FH2$W_FILPROT -&gt; |DEWRDEWRDEWRDEWR|
+---------------------------------------------------------------------                      ------------------
+| FH2$B_BK_FIDNMX| FH2$B_BK_FIDRVN|         FH2$W_BK_FIDSEQ         | 44
+---------------------------------------------------------------------
+|                                 | FH2$_RU_ACTIVE |  FH2$B_JOURNAL | 48
+---------------------------------------------------------------------
+|                         FH2$L_HIGHWATER                           | 4C
+---------------------------------------------------------------------
+//                                                                 \\
+\\                                                                 //
+---------------------------------------------------------------------
+|         FH2$W_CHECKSUM          |                                 | 1FC
+---------------------------------------------------------------------
+</pre>
+
+<BR>
+<CENTER>
+<TABLE>
+<TR>
+    <td><A HREF="index.htm"><IMG SRC="backarro.gif" HEIGHT=31 WIDTH=31 BORDER=0></A></td>
+    <td><A HREF="index.htm">Back</A></TD>
+</TR>
+</TABLE>
+</CENTER>
+
+</body>
+</html>
