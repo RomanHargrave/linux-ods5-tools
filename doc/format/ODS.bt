@@ -1,0 +1,1411 @@
+//------------------------------------------------
+//--- 010 Editor v12.0.1 Binary Template
+//
+//      File: ODS5.bt
+//   Authors: Roman Hargrave <roman@hargrave.info>
+//   Version: 0.1
+//   Purpose: Analyze ODS5/Files11 volume images
+//  Category: 
+// File Mask: 
+//  ID Bytes: 
+//   History: 
+//------------------------------------------------
+
+// Much of this was derived from the excellent book 
+// "VMS File System Internals" (VFI), written by Kirby McKoy.
+// That book talks about Files-11 ODS2; however, much will
+// translate to Files-11 ODS5
+//
+// For clarity, Files-11 is the overall "schema" for the VMS 
+// (and others) file system, and ODS ("On-Disk Structure") is
+// is the actual layout of Files-11 data on media. In common
+// parlance, ODS and Files-11 is used interchangeably. In fact,
+// one will often see ODS versions ("levels", such as ODS2 and ODS5)
+// used interchangeably.
+
+// To get some things clear about data types, it should
+// be generally understood that data types in comments
+// relate to their VAX data types. Indeed, the 1990 publication
+// would have also talked about things in terms of VAX
+// architecture.
+// Fortunately for us, VAX data types will be familiar
+// to the modern developer. The VAX had 8-bit bytes,
+// 16-bit short integers, 32-bit integers, and 64-bit
+// long integers. We fortunately have no need to concern
+// ourselves with floating point, which - at least in the
+// realm of encoding - is a different matter entirely.
+// Further, everything was little endian.
+//
+// As an aside, certain structure fields are prefixed b_, w_, l_.
+// This is first and foremost to align with VFI for better 
+// cross-referencing; however, aside from b_, w_ and l_ do not
+// have any meaningful relationship with type or width. for instance,
+// w_ is used for several 16-bit fields, but also 48-bit fields. It
+// stands for Word.
+//
+// l_ is used for 32-bit fields. It probably stands for Long Word.
+
+// Jargon:
+// 
+// - VAX :: Virtual Address eXtensions (to PDP-11)
+// - VMS :: Virtual Memory System
+// - ODS :: On-Disk Structure
+// - UIC :: User identification code
+// - RMS :: Record management services
+// - LBN :: Logical block number
+// - VBN :: Virtual block number
+// - FID :: File identifier
+// - ACL :: Access Control List
+// - ACE :: Access Control Entry
+// - MFD :: Master File Directory (000000.DIR)
+// - LRU :: Least recently used (cache)
+// - RU :: Recovery Unit (no idea)
+// - RP :: Retrieval Pointer
+// - AI :: After-image
+// - BI :: Before-image
+// - AT :: Audit trail
+// - Executive :: Kernel
+
+// Color Coding Conventions
+// - Reserved/Opaque :: Black
+// - Checksum :: Yellow
+// - LBN :: Dark Red
+// - VBN :: Dark Red + Gray FG
+// - Text :: Dark Green
+// - UIC :: Purple
+// - Perms/Access/Security Fields :: Dark Purple
+// - Time :: Dark Aqua
+// - FS Metadata :: Dark Blue
+// - FS Geometry :: Dark Blue + Light Aqua FG
+// - FID/Version :: Green
+// - Offsets/Pointers/etc... :: Aqua
+
+#define cXDkRed 0x00003A
+
+#define ccReserved cBlack
+#define ccChecksum cYellow
+#define ccLBN      cDkRed
+#define ccVBN      cDkRed
+#define ccVBN_fg   cGray
+#define ccText     cDkGreen
+#define ccUIC      cPurple
+#define ccPerms    cDkPurple
+#define ccTime     cDkAqua
+#define ccMeta     cDkBlue
+#define ccGeom     cDkBlue
+#define ccGeom_fg  cLtAqua
+#define ccFID      cGreen
+#define ccPtr      cAqua
+
+// VMS Time is the number of microseconds elapsed since 1858-11-17
+// The above epoch is significant in that it is the base date for
+// the Smithsonian Astronomical Calendar
+typedef uint64 VMSTime <read=VMSTime_Read, write=VMSTime_Write, bgcolor=ccTime>;
+
+string VMSTime_Read(VMSTime vt) {
+    return Time64TToString((time64_t) ((vt / 10000000) - 3506716800));
+}
+
+void VMSTime_Write(VMSTime& vt, string rep) {
+    time64_t utime = 0;
+    int res = StringToTime64T(rep, utime);
+    if (res == 0) {
+        vt = (utime + 3506716800) * 10000000;
+    }
+}
+
+string VMS_GobbleSpace(const string in) {
+    int firstSpace = Strchr(in, ' ');
+
+    return SubStr(in, 0, firstSpace);
+}
+
+// default block size [VFI 2.2]
+#define BLOCK_SIZE 512
+#define WORD_SIZE sizeof(uint16)
+
+// == Misc. Types =============================================================
+
+// note the use of signed LBNs!
+// this is simply a convenience here. i am unsure whether ODS actually
+// specifies unsigned or signed LBNs. the significance of this is that
+// some changes to VBN dereferencing will need to be made in order to
+// support ODS larger than ~1.1TB (INT32_MAX * BLOCK_SIZE)
+typedef int32  LBN <bgcolor=ccLBN>; 
+typedef uint16 VBN <bgcolor=ccVBN,fgcolor=ccVBN_fg>;
+typedef uint32 UIC <bgcolor=ccUIC>;
+
+typedef struct {
+    ubyte version;
+    ubyte structure_level;
+} StrucLev <read=StrucLev_Read,bgcolor=ccMeta>;
+
+Assert(sizeof(StrucLev) == 2, "StrucLev should be 16 bits");
+
+string StrucLev_Read(StrucLev &lvl) {
+    return Str("Files-11 ODS %u.%u", lvl.structure_level, lvl.version);
+}
+
+// == File Header =============================================================
+
+// ODS File ID (FID) [VFI 2.3.2]
+typedef struct {
+    // File Number
+    // 
+    // Must be >0. Counts from 1.
+    uint16 w_num;
+
+    // File Sequence Number
+    //
+    // Number of times this file number has been
+    // recycled. Helps to disambiguate references.
+    // In terms of specifically accessing the data
+    // related to the file ID, only the number
+    // (and sometimes RVN) is necessary.
+    uint16 w_seq;
+
+    // Relative Volume Number
+    //
+    // This identifies the volume in a volume set that
+    // contains the file
+    ubyte  b_rvn;
+
+    // File Number Extension
+    //
+    // Combined with w_num as the high order 8 bits of a 24-bit number,
+    // this forms a file ID within the volume
+    // identified by the Relative Volume Number
+    ubyte  b_nmx;
+
+    local const uint32 file_number =
+        ((uint32) b_nmx << 16) | w_num;
+} FileID <read=FileID_Read,open=suppress,bgcolor=ccFID>;
+
+string FileID_Read(FileID &id) {
+    string result = 
+        Str("%u,%u", id.file_number, id.w_seq);
+
+    if (id.b_rvn > 0)
+        result += Str(",%u", id.b_rvn);
+
+    return result;
+}
+
+// Assert(sizeof(FileID) == 6, "FileID Structure does not match Spec Size");
+
+// Fileheader Characteristics Bitfields [VFI 2.3.3].
+// See p. 24 of VFI for full field descriptions
+typedef struct {
+    //BitfieldDisablePadding();
+
+    // Set if the BACKUP utility is not
+    // to copy contents of the file.
+    ubyte v_nobackup : 1;
+
+    // Set if write-back caching may be used.
+    ubyte v_writeback : 1;
+
+    // Set if read-check operations are to be performed.
+    ubyte v_readcheck : 1;
+
+    // Set if write-check operations are to be performed.
+    ubyte v_writcheck : 1;
+
+    // Set if the file is to be allocated contiguously
+    // in as fed contiguous sections as possible.
+    ubyte v_contigb : 1;
+
+    // Set if the file was locked on deaccess.
+    // Used to indicate possible inconsistency.
+    // If set, access is to be denied.
+    ubyte v_locked : 1;
+
+    // Set if the file is logically contiguous.
+    // Specifically, this means that the file
+    // is stored entirely sequentially on the disk,
+    // and has not been fragmented.
+    ubyte v_contig : 1;
+
+    // Set if the file has a bad ACL.
+    // This is used to prevent access denial
+    // in the event of inconsistency.
+    ubyte v_badacl : 1;
+
+    // end byte 1
+
+    // Set if the file is a spool file.
+    // Non-spool operations on the file are denied.
+    ubyte v_spool : 1;
+
+    // Set if the file is a directory.
+    ubyte v_directory : 1;
+
+    // Set if the file is stored on at least
+    // one bad block.
+    ubyte v_badblock : 1;
+
+    // Set if the file is to be deleted.
+    // Denies all further operations and
+    // indicates that the file is to be
+    // removed from the ODS on last deaccess.
+    ubyte v_markdel : 1;
+
+    // Set if the space used by this file is not
+    // to be charged to its owner.
+    //
+    // Aside: this is not some esoteric Files-11
+    // terminology. It is literally referring
+    // to the accounting subsystem, as - historically -
+    // many VMS systems were owned by timesharing firms,
+    // and usage was leased by users. VMS provides detailed
+    // statistics about usage by user that can in turn be
+    // used to precisely invoice each customer.
+    ubyte v_nocharge : 1;
+
+    // Set if the file is to be erased (overwritten) when deleted.
+    ubyte v_erase : 1;
+
+    // Unused flags
+    // 
+    // this field set is represented as 32 bits, but only
+    // 14 flags are currently defined.
+    ubyte _padding0 : 2 <hidden=true>;
+    ubyte _padding1[2] <hidden=true>;
+
+    //uint32 _padding : 18 <hidden=true>;
+
+    //BitfieldEnablePadding();
+} FileCharacteristics <bgcolor=ccMeta>;
+
+Assert(sizeof(FileCharacteristics) == 4, "FileCharacteristics does not match spec size");
+
+// NOTE: it would be useful to ensure that FileCharacteristics is 32 bits here,
+// but 010editor will not compute un-padded structure sizes even if they are 
+// byte-aligned
+
+// File access levels.
+//
+// Each operation is assigned a privilege level
+// on the scale of 0-3, where 3 is highest.
+typedef struct {
+    ubyte read : 2;
+    ubyte write : 2;
+    ubyte execute : 2;
+    ubyte delete : 2;
+} FileAccessLevel <bgcolor=ccPerms>;
+
+Assert(sizeof(FileAccessLevel) == 1, "FileAccessLevel does not match spec size");
+
+// The 4-bit (RWED) access control field
+// used by ProtectionCode (below) to define
+// operations permitted to different user
+// categories.
+typedef enum <ubyte> {
+    AB_READ    = 0b0001,
+    AB_WRITE   = 0b0010,
+    AB_EXECUTE = 0b0100,
+    AB_DELETE  = 0b1000
+} AccessBitmap <read=ReadAccessBitmap>;
+
+// Translate AccessBitmap to at-a-glance form
+// e.g. 0101 => RE
+string ReadAccessBitmap(AccessBitmap &bitmap) {
+    string result = "(";
+
+    if ((bitmap & AB_READ) == 0)
+        result += "R";
+
+    if ((bitmap & AB_WRITE) == 0)
+        result += "W";
+
+    if ((bitmap & AB_EXECUTE) == 0)
+        result += "E";
+
+    if ((bitmap & AB_DELETE) == 0)
+        result += "D";
+
+    return result + ")";
+}
+
+// Describes access available to the four different
+// accessor categories.
+typedef struct {
+    // Access level granted to accessors where
+    // any of the following conditions are true:
+    // 
+    // - GROUP(User.UIC) <= MAXSYSGRP
+    // - User has SYSPRV
+    // - User has GRPPRV and is grouped
+    //   with the owner of the file
+    // - User owns the volume
+    AccessBitmap system : 4 <name="System">;
+
+    // File.UIC == User.UIC
+    AccessBitmap owner : 4 <name="Owner">;
+
+    // GROUP(File.UIC) == GROUP(User.UIC)
+    AccessBitmap group : 4 <name="Group">;
+
+    // Applies when none of the above are
+    // applicable
+    AccessBitmap world : 4 <name="World">;
+} ProtectionCode <bgcolor=ccPerms>;
+
+Assert(sizeof(ProtectionCode) == 2, "ProtectionCode does not match spec size");
+
+// Journal control flag bitfields
+typedef struct {
+    // Set if file is to be accessed only in
+    // a recovery unit (RU)
+    ubyte v_only_ru : 1;
+
+    // Set if RU journaling is to be enabled
+    ubyte v_rujnl : 1;
+
+    // Set if before-image journaling is to be enabled
+    ubyte v_bijnl : 1;
+
+    // Set if after-image journaling is to be enabled
+    ubyte v_aijnl : 1;
+
+    // Set if audit-trail journaling is to be enabled
+    ubyte v_atjnl : 1;
+
+    // Set if file is not to be accessed from within
+    // an RU
+    ubyte v_never_ru : 1;
+
+    // Set if the file is an RMS journal file
+    ubyte v_journal_file : 1;
+
+    // Unused bitfield in the 8-bit rep
+    ubyte _padding : 1 <hidden=true>;
+} JournalControl <bgcolor=ccMeta>;
+
+Assert(sizeof(JournalControl) == 1, "JournalControl does not match spec size");
+
+// BLP/Biba security classification data
+typedef struct {
+    ubyte  b_secur_lev;
+    ubyte  b_integ_lev;
+
+    uint16 _reserved <hidden=true>;    
+
+    uint64 q_secur_cat;
+    uint64 q_integ_cat;
+} SecrecyMask <bgcolor=ccPerms>;
+
+Assert(sizeof(SecrecyMask) == 20, "SecrecyMask does not match spec size");
+
+// == File Identity ===========================================================
+
+// Stores identification and accounting data about
+// a file [VFI 2.3.3.2].
+typedef struct {
+    // Blank-padded filename
+    char    t_filename[20] <bgcolor=ccText>;
+
+    // File revision level
+    uint16  w_revision <bgcolor=ccFID>;
+
+    // Create time
+    VMSTime q_credate;
+
+    // Modify time
+    VMSTime q_revdate;
+   
+    // Expire time
+    VMSTime q_expdate;
+
+    // Time of last backup
+    VMSTime q_bakdate;
+
+    // Remainder of filename
+    char    t_filenameext[66] <bgcolor=ccText>;
+} FileIdentity <read=FileIdentity_Read>;
+
+Assert(sizeof(FileIdentity) == 120, "FileIdentity does not match spec size");
+
+string FileIdentity_Read(FileIdentity &ident) {
+    return VMS_GobbleSpace(ident.t_filename + ident.t_filenameext);
+}
+
+// == File Mapping Area =======================================================
+
+// Retrieval pointer formats
+typedef enum <uint16> {
+    // Special RP that records placement options
+    // at file creation for use in future allocations
+    RP_PLACEMENT = 0,
+
+    // Represents LBN groups of up to 256 blocks
+    RP_32,
+
+    // Represents LBN groups of up to 16,384 blocks
+    RP_48,
+
+    // Represents LBN groups of up to 2^30 blocks
+    RP_64
+} RPFormat;
+
+typedef struct (uint16 first_word) {
+    // peek the first word of the RP
+    // local const uint16 first_word = ReadUShort();
+
+    // mask off everything but the high two bits to get the
+    // pointer variant id
+    switch ((first_word >> 14) & 0b11) {
+    // == Format 0 (Placement Metadata) =======================================
+    // TODO: bitfield ordering
+    case RP_PLACEMENT:
+        // Set if exact placement is requested,
+        // or space must be allocated as specified
+        uint16 v_exact : 1;
+    
+        // Set if space is to be allocated on one cylinder
+        uint16 v_oncyl : 1;
+    
+        // Set if space is to be allocated at the start of
+        // the LBN contained in the next RP
+        uint16 v_lbn : 1;
+    
+        // Set if space to be allocated on the same volume
+        uint16 v_rvn : 1;
+    
+        uint16 _padding : 10 <hidden=true>;
+    
+        // Format in two highest bits of first word
+        RPFormat v_format : 2;
+        break;
+    // == Format 1 (22-Bit LBN / 8-bit Count) =================================
+    case RP_32:
+        // Number (n+1) of blocks
+        // NOTE this is uint16 but really ubyte as we need to convince
+        // 010editor to pad bitfields correctly here, and using unpadded
+        // bitfields would prevent assertions about structure size from
+        // working
+        uint16 b_count1 : 8; 
+    
+        // High six bits of start LBN
+        uint16 v_highlbn : 6;
+    
+        // High bits of first word, format
+        RPFormat v_format : 2;
+    
+        // Low 16 bits of start LBN
+        uint16 w_lowlbn;
+
+        local const LBN count = b_count1;
+        local const LBN start = ((uint32) v_highlbn << 16) | w_lowlbn;
+        break;
+    // == Format 2 (32-Bit LBN / 14-bit Count) ================================
+    case RP_48:
+        // Number (n+1) of blocks
+        uint16 v_count2 : 14;
+    
+        // Format
+        RPFormat v_format : 2;
+    
+        // First LBN
+        uint32 l_lbn2;
+
+        local const LBN count = v_count2;
+        local const LBN start = l_lbn2;
+        break;
+    // == Format 3 (32-Bit LBN / 30-Bit Count) ================================
+    case RP_64:
+        // Number (n+1) of blocks
+        // High 14 bits of block count
+        uint16 v_count2 : 14;
+    
+        // Format
+        RPFormat v_format : 2;
+    
+        // Low 16 bits of block count
+        uint16 w_lowcount;
+    
+        // Start LBN
+        uint32 l_lbn3;
+
+        local const LBN count = ((uint32) v_count2 << 16) | w_lowcount;
+        local const LBN start = l_lbn3;
+        break;
+    default:
+        Warning("Found unexpected RP format %d at position %u\n",
+                format, FTell());
+        Assert(false, "Unexpected RP format");
+        break;
+    }
+} RetrPtr <bgcolor=ccPtr,read=RetrPtr_Read,open=suppress>;
+
+string RetrPtr_Read(RetrPtr &rp) {
+    return Str("%u @ LBN %u", rp.count, rp.start);
+}
+
+// Maps file VBNs to LBNs [VFI 2.3.3.3].
+typedef struct (ubyte size_words) {
+    // ok but have you seen this in a template yet.
+
+    // compute the size of the mapping area from the
+    // number of words between the start of the mapping area
+    // and the start of the ACL.
+    // Words are 16 bits and all RPs are word-aligned, and
+    // we can assume that the mapping area does not extend
+    // past the last RP.
+    local uint64 start_pos = FTell();
+    local uint64 end_pos = start_pos + (size_words * WORD_SIZE);
+
+    local uint16 first_word;
+    local uint64 ptr_count = 0;
+
+    // read the first 16 bit integer of the next RP,
+    // decide what type of RP it is using the high 2 bits, 
+    // and then create a template variable for that RP type
+    while (FTell() < end_pos) {
+        // peek the first word of the pointer
+        first_word = ReadUShort();
+
+        // mask off everything but the high two bits to get the
+        // pointer variant id
+        if (first_word == 0) {
+            FSeek(end_pos);
+            break;
+        } else {
+            RetrPtr rp(first_word);
+            ++ptr_count;
+        }
+    }
+} FileMapArea;
+
+// How does the map area help us go from VBN to LBN?
+// It's somewhat simple:
+// - The map area contains a sequence of RPs.
+// - Each RP has a start LBN and a number of LBNs from
+//   that start LBN
+// - rp[0] contains VBN=>LBN mappings starting at VBN 0 
+//   and ending at VBN (rp.count)
+// - VBN 0 would therefore be equivalent to the first LBN
+//   in RP 0
+// 
+// We will implement a simple scan function here to facilitate
+// dealing with this.
+//
+// As an aside, this function relies on signed LBNs to indicate
+// failure by returning a negative (invalid) LBN. If unsigned
+// LBNs are required, this function will have to be made to
+// fail with Assert(false) or to return -1 with a signed uint64
+// at which point it is a little less clean.
+LBN DerefVBN(FileMapArea &map, VBN vbn) {
+    local uint32 start_vbn = 0;
+
+    // loop locals
+    local uint64 idx   = 0;
+    local uint32 count = 0;
+    local LBN start    = 0;
+    for (idx = 0; idx < map.ptr_count; ++idx) {
+        // for our purposes, we need to know the actual
+        // number of LBNs mapped, which is always n+1
+        count = map.rp[idx].count + 1;
+        start = map.rp[idx].start;
+
+        // if input VBN is between start_vbn and start_vbn + rp.count,
+        // it is mapped to an LBN by this RP
+        if (vbn <= (start_vbn + count)) {
+            // compute the offset in to the extent and return the LBN
+            // with that offset from the start LBN
+            return (vbn - start_vbn - 1) + start;
+        }
+
+        start_vbn += count;
+    }
+
+    return -1;
+}
+
+// == ACL =====================================================================
+
+// If you thought the file mapping area was wild, just wait till you see this!
+
+// Everything here, Q.v. VFI 2.3.3.4
+
+// Meaningful values of ACEHeader.b_type
+typedef enum <ubyte> {
+    // ACE indicating name of journal to which security alarms
+    // will be written upon access
+    ACE_ALARM = 0,
+
+    // VMS<5: ACE indicating name of journal to which security
+    // audit entries are written on access
+    ACE_AUDIT,
+
+    // ACE indicating default protection for files created in
+    // a directory
+    ACE_DIRDEF,
+
+    // Application-specific ACE
+    ACE_INFO,
+
+    // ACE indicating identifiers used to determine who may access
+    // a file
+    ACE_KEYID,
+
+    // ACE indicating location of the RMS after-image Journal
+    ACE_RMSJNL_AI,
+
+    // ACE indicating location of the RMS audit-trail Journal
+    ACE_RMSJNL_AT,
+
+    // ACE indicating location of the RMS before-image journal
+    ACE_RMSJNL_BI,
+
+    // ACE indicating location of the RMS recovery-unit journal
+    ACE_RMSJNL_RU,
+
+    // ACE indicating location of the default RMS RU journal
+    ACE_RMSJNL_RU_DEFAULT
+} ACEType;
+
+// Acceptable values for ACEHeader.w_flags.
+// Note that the field may consist of any number
+// of these constants ORed together.
+//
+// No explicit definition of each bitfield position
+// was given, so we shall rely upon intuition and
+// assumptions.
+typedef enum <uint16> {
+    // == Type-dependent flags (low byte) =====================================
+    
+    // === AC$V_INFO_TYPE =====================================================
+
+    // ACE$C_CUST
+    // User application info
+    ACE_INFO_TYPE_CUST = 0b0000000000000001,
+
+    // ACE$C_CSS
+    // DEC Computer Special Services application
+    ACE_INFO_TYPE_CSS  = 0b0000000000000010,
+
+    // ACE$C_VMS
+    // VMS utility or layered product
+    ACE_INFO_TYPE_VMS  = 0b0000000000000100,
+
+    // === Others =============================================================
+
+    ACE_V_RESERVED     = 0b0000000000010000,
+    ACE_V_SUCCESS      = 0b0000000000100000,
+    ACE_V_FAILURE      = 0b0000000001000000,
+
+    // == Type-independent flags (high byte) ==================================
+
+    ACE_V_DEFAULT      = 0b0000000100000000,
+    ACE_V_PROTECTED    = 0b0000001000000000,
+    ACE_V_HIDDEN       = 0b0000010000000000,
+    ACE_V_NOPROPAGATE  = 0b0000100000000000
+} ACEFlags;
+
+// A structure containing the "Base ACE" fields
+// and the appropriate specialized ACE fields
+typedef struct {
+    // Size of the ACE, including this header
+    ubyte   b_size;
+
+    // Type of ACE
+    ACEType b_type;
+
+    // Flags. Lots of bitfield action.
+    ACEFlags w_flags;
+
+    local const ubyte ACE_HDR_SIZE = 
+        sizeof(ubyte) + sizeof(ACEType) + sizeof(ACEFlags);
+
+    switch (b_type) {
+    // == Alarm ACE [2.3.3.4.1] ===============================================
+    case ACE_ALARM:
+        // Access type (contains bitfields!) [VFI 2.3.3.4.1 p.43]
+        uint32 l_access;
+
+        // Destination journal name
+        char   t_auditname[16];
+        break;
+    // == Application ACE & RMS Attr ACE [VFI 2.3.3.4.2] ======================
+    case ACE_INFO:
+        // Just read VFI 2.3.3.4.2 (p.43-44)
+        uint32 l_info_flags;
+
+        // Application-specific information
+        char   t_info_start[248];
+        
+        // TODO union or logic to determine if RMS application ACE
+        // RMS attributes fields, for reference:    
+        if (false) {    
+            // VFI 2.3.3.4.2 p.44-45
+            uint32 l_info_flags;
+    
+            // Version of the RMS ACE. "Currently set to 0".
+            uint16 w_rmsatr_variant;
+    
+            // Length of the fixed portion of the ACE. 
+            // "Currently 20 bytes"
+            ubyte  b_fixlen;
+    
+            ubyte  _reserved0 <hidden=true>;
+    
+            // RMS ACE Minor Version
+            // For VMS 5, this is 2
+            uint16 w_rmsatr_minor_id;
+          
+            // RMS ACE Major Version
+            // For VMS 5, this is 1
+            uint16 w_rmsatr_major_id;
+    
+            // RMS Flags. STATISTICS and/or XLATE_DEC
+            // XLATE_DEC "is not supported for VMS Version 5.0"
+            uint32 l_rms_attribute_flags;
+        }
+
+        break;
+    // == Directory Default Protection ACE [VFI 2.3.3.4.3] ====================
+    case ACE_DIRDEF:
+        // Access type. "This longword is unused"
+        uint32 l_access;
+        
+        uint32 l_sys_prot;
+        uint32 l_own_prot;
+        uint32 l_grp_prot;
+        uint32 l_wor_prot;
+        break;
+    // == Identifier ACE [VFI 2.3.3.4.4] ======================================
+    case ACE_KEYID:
+        // VFI p.48
+        uint32 l_access;
+
+        local const ubyte ACE_KEYID_FIXED_SIZE =
+            ACE_HDR_SIZE + sizeof(uint32);
+
+        // Sequence of keys occupies remaining specified size
+        uint32 l_key[(b_size - ACE_KEYID_FIXED_SIZE) / sizeof(uint32)];
+    // == RMS Journaling ACEs [VFI 2.3.3.4.5] =================================
+    case ACE_RMSJNL_AI:
+    case ACE_RMSJNL_AT:
+    case ACE_RMSJNL_BI:
+    case ACE_RMSJNL_RU:
+    case ACE_RMSJNL_RU_DEFAULT:
+        char    t_volnam[12];
+        ubyte   b_volnam_len;
+        ubyte   b_rjrver;
+        FileID  w_fid;
+        uint16  w_rmsjnl_flags;
+        uint32  l_jnlidx;
+        VMSTime q_cdate;
+        uint32  l_backup_seqno;
+        VMSTime q_modification_time;
+        break;
+    default:
+        Warning("Found unexpected ACE type %u near pos %u with size %u",
+                b_type, FTell(), b_size);
+        // NOTE we could skip the ACE based on b_size if this becomes
+        // a nuisance. Just FSkip(b_size - ACE_HDR_SIZE).
+        Assert(false, "Invalid ACE type");
+        break;
+    }
+} ACE;
+
+// A list of ACEs. It is importand for 010 to know the size of the
+// ACL area because it will need to generate variable-size members.
+typedef struct (ubyte size_words) {
+    local const uint64 end =
+        FTell() + (size_words * WORD_SIZE);
+
+    // duplicate ACE until known size exhausted
+    while (FTell() < end)
+        ACE ace;
+} ACL;
+
+// == User Reserved Area [VFI 2.3.3.5] ========================================
+
+// This struct is largely a placeholder, but exists for consistency and
+// may be expanded to aid later analysis efforts
+typedef struct (ubyte size_words) {
+    ubyte reserved[size_words * WORD_SIZE];
+} UserReservedArea;
+
+// == The Actual File Header Structure ========================================
+
+// Metadata about a file [VFI 2.3.3]. 
+// Stored in the Volume Index File [VFI 2.5.1].
+typedef struct {
+    local const uint64 begin = FTell();
+
+    // Ident area offset. 
+    //
+    // This is the number of 16-bit words
+    // between the start of the FH and the ident
+    // area. This therefore defines both the size
+    // of the header and the location of the ident
+    // area.
+    ubyte  b_idoffset <bgcolor=ccPtr>;
+
+    // Map area offset
+    //
+    // Number of 16-bit words from the FH to the
+    // map area. It follows that this can be used
+    // to derive the size of the ident area by
+    // taking the difference of this offset and
+    // the ident offset.
+    //
+    // Aside: Any free space in the FH should be
+    // allocated to the map area. The primary map
+    // area will require at least 8 bytes.
+    ubyte  b_mpoffset <bgcolor=ccPtr>;
+
+    // Access control list offset
+    //
+    // The number of 16-bit words from the FH to 
+    // the ACL. As with b_mpoffset, this can be 
+    // used to determine the size of the map area.
+    ubyte  b_acoffset <bgcolor=ccPtr>;
+
+    // Reserved area offset
+    //
+    // The number of 16-bit words from the FH to
+    // the reserved area. Can be used to determine
+    // the size of the ACL.
+    // The size of the reserved area can be found
+    // by taking the difference between the end
+    // of the header block data (e.g. end of the 
+    // logical block, but before the checksum)
+    // 
+    // The reserved area may be used for "special applications",
+    // and is of no significance to the ODS.
+    ubyte  b_rsoffset <bgcolor=ccPtr>;
+
+    // Extension segment number
+    //
+    // The header's position in the index file,
+    // zero-based.
+    uint16 w_seg_num <bgcolor=ccMeta>;
+
+    // Structure level and version.
+    //
+    // The low byte contains the ODS level, and the 
+    // high byte contains the ODS sub-revision.
+    // For instance, 0x0102 would refer to ODS2.1
+    StrucLev w_struclev;
+
+    // File ID
+    FileID w_fid;
+
+    // Extension File ID
+    //
+    // Contains the id of the next extension header.
+    // If all fields are 0, there is no extension header.
+    FileID w_ext_fid;
+
+    // File record attributes
+    //
+    // Contents depend on nature of file.
+    // This is used by features such as RMS
+    // to store information about details like
+    // record organization or EOF positions.
+    ubyte  w_recattr[32] <bgcolor=ccReserved>;
+
+    // File characteristics.
+    FileCharacteristics l_filechar;
+
+    uint16 _reserved0 <hidden=true,bgcolor=ccReserved>;
+
+    // Number of words (uint16) in the map
+    // area that are in use.
+    ubyte  b_map_inuse <bgcolor=ccGeom,fgcolor=ccGeom_fg>;
+
+    // Minimum privilege level required
+    // for given operations on the file.
+    FileAccessLevel  b_acc_mode;
+
+    // File owner identify.
+    //
+    // May be, but not always, a UIC.
+    UIC l_fileowner;
+
+    // File protection code.
+    // Describes what access all users in the
+    // system may have to this file.
+    ProtectionCode w_fileprot;
+
+    // Back-link pointer (FID).
+    //
+    // Contains the FID of the directory containing this
+    // file. If this FH is an extension header, this is the
+    // FID of the primary header.
+    FileID w_backlink <bgcolor=ccMeta>;
+
+    // Journal control flags
+    JournalControl b_journal <bgcolor=ccMeta>;
+
+    // Recoverable facility ID number. 
+    //
+    // Contains an identifier of the facility managing the file
+    // in an active RU.
+    ubyte  b_ru_active <bgcolor=ccMeta>;
+
+    uint16 _reserved1 <hidden=true,bgcolor=ccReserved>;
+
+    // File highwater mark
+    //
+    // Contains the VBN+1 of the highest block written.
+    // Used to prevent reads past the end of the file.
+    //
+    // If 0 (or does not fit) HW marking is not maintained,
+    // and is not checked by the system.
+    uint32 l_highwater <bgcolor=ccMeta>;
+
+    // The following two fields were documented in VFI but do
+    // not appear to occur
+
+    // uint64 _reserved3 <hidden=true,bgcolor=ccReserved>;
+
+    // Security classification mask
+    //
+    // "not currently supported"
+    //
+    // Bell/LaPadula security model + Biba integrity
+    // SecrecyMask r_class_prot;
+
+    // if ident area present, offset > 0
+    if (b_idoffset > 0) {
+        FSeek(begin + (b_idoffset * WORD_SIZE));
+        FileIdentity ident;
+    }
+
+    local ubyte map_words =
+        b_acoffset - b_mpoffset;
+
+    // if map area has size > 0, read it
+    if (map_words > 0) {
+        FSeek(begin + (b_mpoffset * WORD_SIZE));
+        FileMapArea map(map_words);
+    }
+
+    local ubyte acl_words =
+        b_rsoffset - b_acoffset;
+
+    // if ACL area has size > 0, read it
+    if (acl_words > 0) {
+        FSeek(begin + (b_acoffset * WORD_SIZE));
+        ACL acl(acl_words);
+    }
+
+    // reserved area is complicated - eats whatever is left in this
+    // block. This code is untested so far.
+    if (b_rsoffset > b_acoffset) {
+        local uint64 reserved_size =
+            BLOCK_SIZE - (begin - FTell());
+
+        ubyte reserved[reserved_size] <bgcolor=ccReserved>;
+    }
+
+    // at this point we can assume that we are at the end of the
+    // block. it is recommended to give any free space to the 
+    // map area, so it will fill any void space between there
+    // and here
+    uint16 checksum;
+} FileHeader <read=FileHeader_Read>;
+
+string FileHeader_Read(FileHeader &hdr) {
+    if (hdr.b_idoffset > 0) {
+        return FileIdentity_Read(hdr.ident);
+    } else {
+        return Str("%s (Header)", FileID_Read(hdr.w_fid));
+    }
+}
+
+// == Directories [VFI 2.4] ===================================================
+
+typedef struct {
+    uint16 w_version <bgcolor=ccFID>;
+    FileID w_fid;
+} DE_FID <read=DE_FID_Read,name="File ID Entry">;
+
+string DE_FID_Read(DE_FID &ent) {
+    return Str("%s;%u", FileID_Read(ent.w_fid), ent.w_version);
+}
+
+typedef enum <ubyte> {
+    DIR_C_FID = 0
+} DirEntType;
+
+#define DIR_OVERHEAD (sizeof(uint16) + 2)
+typedef struct {
+    // Number of bytes in the record, minus 2. Always even.
+    uint16 w_size <bgcolor=ccMeta>;
+
+    // File version limit
+    uint16 w_verlimit <bgcolor=ccMeta>;
+
+    // Flags. All parts of DIR$B_FLAGS
+    // 
+    // Bitfield, see VFI p.54
+    DirEntType v_type : 3 <bgcolor=ccMeta>;
+    ubyte _reserved0 : 5 <hidden=true>;
+
+    // File name length
+    ubyte  b_namecount <bgcolor=ccMeta>;
+
+    // File name (docs suggest 8 bytes AND var length?)
+    char   t_name[b_namecount] <bgcolor=ccText>;
+
+    local const uint16 value_bytes =
+        w_size - DIR_OVERHEAD - b_namecount;
+
+    switch (v_type) {
+    case DIR_C_FID:
+        DE_FID entries[value_bytes / sizeof(DE_FID)] <open=true>;
+        break;
+    default:
+        Warning("Unsupported Directory v_type %u\n", v_type);
+        Assert(false, "Unexpected v_type in Directory");
+        break;
+    }
+} DirEnt <read=DirEnt_Read>;
+
+string DirEnt_Read(DirEnt &ent) {
+    return ent.t_name;
+}
+
+// == Index File [VFI 2.5.1] ==================================================
+
+// The "index file" (presented as INDEXF.SYS immediately beneath the MFD) contains
+// a series of virtual blocks, including the home block(s). 
+
+typedef struct {
+    // Home block LBN, should always equal FTell() at
+    // start of struct
+    LBN     l_homelbn;
+
+    // LBN of alternate home block
+    LBN     l_alhomelbn;
+
+    // LBN of backup index file header
+    LBN     l_altidxlbn;
+
+    // ODS versioning info
+    StrucLev w_struclev;
+
+    // The cluster factor.
+    //
+    // This is the number of blocks represented
+    // by each bit in the storage bitmap.
+    // It must not be 0.
+    uint16  w_cluster <bgcolor=ccGeom,fgcolor=ccGeom_fg>;
+
+    // VBN of this block
+    VBN     w_homevbn;
+
+    // VBN of the alternate home block
+    //
+    // Derived from:
+    //   w_alhomevbn = w_cluster * 2 + 1 [VFI p.65]
+    VBN     w_alhomevbn;
+
+    // VBN of the backup index FH
+    //
+    // Derived from:
+    //   w_altidxvbn = w_cluster * 3 + 1 [VFI p.65]
+    VBN     w_altidxvbn;
+
+    // VBN of first block in the index file bitmap
+    //
+    // Derived from:
+    //   w_ibmapvbn = w_cluster * 4 + 1 [VFI p.65]
+    VBN     w_ibmapvbn;
+
+    // LBN of the first block in the index file bitmap
+    //
+    // This is the entrypoint into the rest of the volume.
+    // It must not be 0.
+    LBN     l_ibmaplbn;
+
+    // Maximum number of files allowed on volume
+    //
+    // Must be greater than w_resfiles.
+    // May not exceed 2^24-1
+    uint32  l_maxfiles <bgcolor=ccGeom,fgcolor=ccGeom_fg>;
+
+    // Number of blocks in the index file bitmap
+    uint16  w_ibmapsize <bgcolor=ccGeom,fgcolor=ccGeom_fg>;
+
+    // Number of reserved files on the volume
+    //
+    // Must be greater than 4
+    uint16  w_resfiles <bgcolor=ccMeta>;
+
+    // Device type
+    //
+    // Per VFI p.65 it is "not used" and is always 0
+    uint16  w_devtype <bgcolor=ccMeta>;
+
+    // Relative volume number
+    //
+    // RVN assigned to this volume in a set.
+    // If this volume is not part of a set,
+    // the RVN is 0.
+    uint16  w_rvn <bgcolor=ccMeta>;
+
+    // Number of volumes in this set
+    //
+    // Only used in tightly coupled sets, where this
+    // volume is the first (RVN=1) volume.
+    uint16  w_setcount <bgcolor=ccMeta>;
+
+    // Volume characteristics bitfield
+    //
+    // See VFI p.66 for values
+    uint16  w_volchar <bgcolor=ccMeta>;
+
+    // Volume owner (usually UIC)
+    UIC     l_volowner;
+
+    uint32  _reserved0 <hidden=true,bgcolor=ccReserved>;
+
+    // Volume protection code
+    ProtectionCode w_protect;
+
+    // Default file protection code.
+    //
+    // Not supported (probably VMS <= 5) per VFI p.67
+    ProtectionCode w_fileprot;
+
+    uint16  _reserved1 <hidden=true,bgcolor=ccReserved>;
+
+    // Additive checksum of all entries to this point
+    // 
+    // "same sort of algorithm as the file header checksum" [VFI p.67]
+    uint16  w_checksum1 <bgcolor=ccChecksum>;
+
+    // Volume creation date
+    VMSTime q_credate;
+
+    // Default window size
+    //
+    // Number of RPs used for the window when files are accessed
+    // and a window is not specified by the user
+    ubyte   b_window <bgcolor=ccMeta>;
+
+    // Directory preaccess limit
+    //
+    // Number of directory structures to store in the FS directory
+    // access cache. Also an estimate of number of concurrent users.
+    ubyte   b_lru_lim <bgcolor=ccMeta>;
+
+    // Default file extend
+    //
+    // The number of blocks allocated to a file upon an extension
+    // action that does not specify the number of blocks to be added.
+    uint16  w_extend <bgcolor=ccMeta>;
+
+    // NOTE: the next two VMSTimes are durations, not absolute times.
+    // duration storage format is identical to time storage
+    // format, but should be displayed in terms of duration,
+    // as opposed to constructing a date based upon epoch.
+
+    // Minimum file retention period
+    VMSTime q_retainmin;
+
+    // Maximum file retention period
+    VMSTime q_retainmax;
+
+    // Volume revision date
+    //
+    // Where revision is the last significant modification
+    // made to the volume. Maybe be 0.
+    VMSTime q_revdate;
+
+    // Minimum security classification
+    //
+    // Sets the minimum security class for files that
+    // may be created on this volume.
+    SecrecyMask r_min_class;
+
+    // Maximum security classification
+    //
+    // Sets the maximum security class for files
+    // that may be created on this volume.
+    SecrecyMask r_max_class;
+
+    ubyte   _reserved3[320] <hidden=true,bgcolor=ccReserved>;
+
+    // Media serial number
+    //
+    // Holds the serial number of the physical medium
+    // upon which this volume is located.
+    uint32  l_serialnum <bgcolor=ccMeta>;
+
+    // Volume set name
+    char    t_strucname[12] <bgcolor=ccText>;
+
+    // Volume name
+    char    t_volname[12] <bgcolor=ccText>;
+
+    // Volume owner name
+    char    t_ownername[12] <bgcolor=ccText>;
+
+    // Format type name
+    //
+    // Typically DECFILE11B, signifying Files-11 ODS 2.x
+    char    t_format[12] <bgcolor=ccMeta>; 
+
+    uint16  _reserved4 <hidden=true,bgcolor=ccReserved>;
+
+    // Second checksum
+    //
+    // Additive checksum of preceding 255 words
+    uint16  w_checksum2; 
+} HomeBlock;
+
+// [VFI 2.5.1.7]
+VBN FileHeaderVBN(uint32 file_number, HomeBlock &hb) {
+    return hb.w_cluster * 4 + hb.w_ibmapsize + file_number;
+}
+
+Assert(sizeof(HomeBlock) == BLOCK_SIZE, "HomeBlock does not match expected block size");
+
+// Boot block. For our purposes just a huge hole with a checksum at the end
+typedef struct {
+    ubyte program[BLOCK_SIZE] <bgcolor=ccReserved>;
+} BootBlock;
+
+Assert(sizeof(BootBlock) == BLOCK_SIZE, "BootBlock does not match expected block size");
+
+// Indicates the index file bitmap
+typedef struct (LBN block_span) {
+    ubyte bitmap[block_span * BLOCK_SIZE];
+} IndexFileBitmap <bgcolor=ccMeta>;
+
+// == Template Entrypoint, Functions & Special Blocks =========================
+
+// Compute the offset in the file at which LBN x should reside
+uint64 LBNPos(LBN blockno) {
+    return blockno * BLOCK_SIZE;
+}
+
+// Compute the block number at a byte position
+LBN BlockNumber(uint64 pos) {
+    return pos / BLOCK_SIZE;
+}
+
+// Compute the cluster number at a byte position
+uint64 ClusterNumber(uint64 pos, uint16 factor) {
+    return (BlockNumber(pos) / factor) + 1;
+}
+
+// === The Index File =========================================================
+
+// The index file is our entry into the ODS and the actual filesystem
+// It begins with a boot block, and contains a series of home blocks,
+// backup home blocks, and bitmaps.
+
+// ==== Begin Clusters 1-2 ====================================================
+
+// Clusters 1-2 seem to be guaranteed to live contiguously the beginning of
+// the device/image.
+// It contains the boot block and home block.
+// We can make the assumption that IDX VBN 0 = LBN 0 and that VBN 1 = LBN 1
+// We can use these assumptions to, most importantly, read a home block.
+// From the home block, we can discover everything we need.
+
+// Begin with the boot block. We will always assume the boot block to be
+// at position 0
+#define BOOT_LBN 0
+
+FSeek(LBNPos(BOOT_LBN));
+BootBlock boot;
+
+// Assume Home at LBN 1, though a search could be implemented.
+#define HOME_LBN 1
+
+FSeek(LBNPos(HOME_LBN));
+HomeBlock home;
+
+// Template cluster filler home blocks [VFI 2.5.1.3]
+local const LBN home_block_remain_count =
+    (home.w_cluster * 2) - 2;
+
+local LBN home_blocks_loaded = 0;
+
+for (home_blocks_loaded = 0; 
+     home_blocks_loaded < home_block_remain_count; 
+     ++home_blocks_loaded)
+    HomeBlock home <hidden=true>;
+
+// ==== End of Clusters 1-2 ===================================================
+
+#define FID_INDEXF 1
+#define FID_BITMAP 2
+#define FID_BADBLK 3
+#define FID_MFD    4
+#define FID_CORIMG 5
+#define FID_BACKUP 8
+#define FID_BADLOG 9
+
+// Volume set management reserved files
+#define FID_VOLSET 6
+#define FID_CONTIN 7
+
+
+// In order to discover the primary index file header LBN, we will
+// apply the File ID to VBN formula given in [VFI 2.5.1.7] and then
+// tranlate the VBN to an LBN using the procedure described in [VFI 2.3.3.3 p.33]
+// to locate the LBN in the map area.
+
+// It should in theory be possible to avoid the chicken-and-egg problem of 
+// locating the main index file header LBN (we need the map area from the same
+// header in order to do VBN translation); however, it is more expedient to
+// start in from the backup index file header as we can obtain its LBN from
+// the home block that we just located.
+FSeek(LBNPos(home.l_altidxlbn));
+FileHeader alt_idx_hdr;
+
+// lets test a VBN lookup in that FH to see if we can find the
+// backup HB in the second extent
+local LBN backup_fh_lbn = DerefVBN(alt_idx_hdr.map, home.w_alhomevbn);
+Assert(backup_fh_lbn == home.l_alhomelbn, 
+        "DerefVBN() returned unexpected mapping for w_alhomevbn compared to l_alhomelbn");
+
+// Also test File ID => Header VBN conversion for an FID with a known header VBN
+local VBN indexf_header_vbn = FileHeaderVBN(1, home);
+Printf("FID 1 HDR VBN = %u\n", indexf_header_vbn);
+local LBN indexf_header_lbn = DerefVBN(alt_idx_hdr.map, indexf_header_vbn);
+Printf("FID 1 HDR LBN = %d\n", indexf_header_lbn);
+
+// Template the primary index file header
+FSeek(LBNPos(indexf_header_lbn));
+FileHeader indexf_header;
+
+// locate the backup home block range and template it
+local uint64 backup_hb_start = LBNPos(DerefVBN(alt_idx_hdr.map, home.w_cluster * 2 + 1));
+local uint64 backup_hb_end   = LBNPos(DerefVBN(alt_idx_hdr.map, home.w_cluster * 3));
+
+FSeek(backup_hb_start);
+while (FTell() <= backup_hb_end) {
+    HomeBlock backup_hb <hidden=true>;
+}
+
+// locate the backup IDX FHs and template them
+local uint64 backup_idfh_start =
+    LBNPos(DerefVBN(alt_idx_hdr.map, home.w_cluster * 3 + 1));
+local uint64 backup_idfh_end =
+    LBNPos(DerefVBN(alt_idx_hdr.map, home.w_cluster * 4));
+
+// one of these will be the same addr as alt_idx_hdr
+FSeek(backup_idfh_start);
+while (FTell() <= backup_idfh_end) {
+    FileHeader backup_idx_fh <hidden=true>;
+}
+
+// Template the IBM
+FSeek(LBNPos(home.l_ibmaplbn));
+IndexFileBitmap index_file_bitmap(home.w_ibmapsize);
+
+// We should now be facing FHs for Files 1-16,
+// which are always logically contiguous to the IBM [VFI 2.5.1.7]
+FileHeader fh[16] <optimize=false>;
